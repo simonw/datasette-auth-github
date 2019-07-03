@@ -13,16 +13,17 @@ Usage instructions:
 * Set the Authorization callback URL to `http://127.0.0.1:8001/-/auth-callback`
 * Create a `metadata.json` file with the following structure:
 
-    {
-        "title": "datasette-auth-github demo",
-        "plugins": {
-            "datasette-auth-github": {
-                "client_id": "your-github-client-id",
-                "client_secret": "your-github-client-secret"
-            }
+```json
+{
+    "title": "datasette-auth-github demo",
+    "plugins": {
+        "datasette-auth-github": {
+            "client_id": "your-github-client-id",
+            "client_secret": "your-github-client-secret"
         }
     }
-
+}
+```
 Now you can start Datasette like this:
 
     $ datasette fixtures.db -m metadata.json
