@@ -90,17 +90,14 @@ class AsgiAuth:
         simple_cookie = SimpleCookie()
         simple_cookie.load(cookie.decode("utf8"))
         cookies = {key: morsel.value for key, morsel in simple_cookie.items()}
-        print(repr(cookies))
         auth_cookie = cookies.get(self.cookie_name)
         if not auth_cookie:
-            print("  no auth_cookie")
             return None
         # Decode the signed cookie
         signer = Signer(self.cookie_secret)
         try:
             cookie_value = signer.unsign(auth_cookie)
         except BadSignature:
-            print("  bad signature on {}".format(auth_cookie))
             return None
         return json.loads(cookie_value)
 
