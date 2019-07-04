@@ -192,7 +192,7 @@ class GitHubAuth(AsgiAuth):
 def asgi_wrapper(datasette):
     config = datasette.plugin_config("datasette-auth-github") or {}
     client_id = config.get("client_id")
-    client_secret = config.get("client_id")
+    client_secret = config.get("client_secret")
 
     def wrap_with_asgi_auth(app):
         if not (client_id and client_secret):
