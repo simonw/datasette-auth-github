@@ -23,5 +23,8 @@ setup(
     version=VERSION,
     py_modules=["datasette_auth_github"],
     entry_points={"datasette": ["auth_github = datasette_auth_github"]},
-    install_requires=["datasette"],
+    extras_require={
+        "test": ["datasette", "pytest", "pytest-asyncio", "asgiref~=3.1.2"]
+    },
+    tests_require=["datasette-auth-github[test]"],
 )

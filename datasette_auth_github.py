@@ -84,7 +84,7 @@ class AsgiAuth:
             await self.require_auth(scope, receive, send)
 
     def auth_from_scope(self, scope):
-        cookie = dict(scope["headers"]).get(b"cookie")
+        cookie = dict(scope.get("headers") or {}).get(b"cookie")
         if not cookie:
             return None
         simple_cookie = SimpleCookie()
