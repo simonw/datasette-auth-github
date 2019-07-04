@@ -2,9 +2,7 @@
 
 Datasette plugin that authenticates users against GitHub.
 
-This is a very early alpha! Don't use this yet.
-
-For example, it leaks your `client_secret` in `/-/metadata.json` in a way that is visible to any user who is logged in. This is bad!
+This requires datasette master - it uses unreleased plugin hooks.
 
 Usage instructions:
 
@@ -18,12 +16,15 @@ Usage instructions:
     "title": "datasette-auth-github demo",
     "plugins": {
         "datasette-auth-github": {
-            "client_id": "your-github-client-id",
-            "client_secret": "your-github-client-secret"
+            "client_id": {"$env": "GITHUB_CLIENT_ID"},
+            "client_secret": {"$env": "GITHUB_CLIENT_SECRET"}
         }
     }
 }
 ```
-Now you can start Datasette like this:
+Now you can start Datasette like this, passing in the secrets as environment variables:
 
-    $ datasette fixtures.db -m metadata.json
+    $ GITHUB_CLIENT_ID=XXX GITHUB_CLIENT_SECRET=YYY datasette \
+        fixtures.db -m metadata.json
+
+Note that hard-coding secrets in `metadata.json` is a bad idea as they will be visible to anyone who can navigate to `/-/metadata`. Instead, we use a new mechanism for [adding secret plugin configuration options](https://datasette.readthedocs.io/en/latest/plugins.html#secret-configuration-values).
