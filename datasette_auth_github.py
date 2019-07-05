@@ -1,12 +1,13 @@
-from datasette import hookimpl
 import base64
-import hmac
 import hashlib
-from http.cookies import SimpleCookie
-from urllib.parse import parse_qsl, urlencode
-from urllib.request import urlopen
+import hmac
 import json
+from http.cookies import SimpleCookie
+from urllib.parse import parse_qsl
 
+import http3
+
+from datasette import hookimpl
 
 SALT = "datasette-auth-github"
 
@@ -107,6 +108,8 @@ class AsgiAuth:
 
 class GitHubAuth(AsgiAuth):
     callback_path = "/-/auth-callback"
+    # Tests can over-ride api_client here:
+    github_api_client = http3.AsyncClient()
 
     def __init__(self, app, cookie_secret, client_id, client_secret):
         self.app = app
@@ -122,22 +125,17 @@ class GitHubAuth(AsgiAuth):
                 await send_html(send, "Authentication failed, no code")
                 return
             # Exchange that code for a token
-            # TODO: This should be a non-blocking HTTP call
-            response = (
-                urlopen(
+            github_response = (
+                await self.github_api_client.post(
                     "https://github.com/login/oauth/access_token",
-                    data=urlencode(
-                        {
-                            "client_id": self.client_id,
-                            "client_secret": self.client_secret,
-                            "code": qs["code"],
-                        }
-                    ).encode("utf8"),
+                    data={
+                        "client_id": self.client_id,
+                        "client_secret": self.client_secret,
+                        "code": qs["code"],
+                    },
                 )
-                .read()
-                .decode("utf8")
-            )
-            parsed = dict(parse_qsl(response))
+            ).text
+            parsed = dict(parse_qsl(github_response))
             access_token = parsed.get("access_token")
             if not access_token:
                 await send_html(send, "No valid access token")
@@ -147,7 +145,7 @@ class GitHubAuth(AsgiAuth):
                 access_token
             )
             try:
-                profile = json.loads(urlopen(profile_url).read().decode("utf8"))
+                profile = (await self.github_api_client.get(profile_url)).json()
             except ValueError:
                 await send_html(send, "Could not load GitHub profile")
                 return
@@ -195,9 +193,7 @@ def asgi_wrapper(datasette):
         if not (client_id and client_secret):
             return app
 
-        cookie_secret = (
-            salted_hmac("cookie_secret", client_id, client_secret).digest()
-        )
+        cookie_secret = salted_hmac("cookie_secret", client_id, client_secret).digest()
         return GitHubAuth(
             app,
             cookie_secret=cookie_secret,
