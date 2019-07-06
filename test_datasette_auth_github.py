@@ -6,7 +6,7 @@ from http3 import AsyncClient, AsyncDispatcher, AsyncResponse, codes
 
 from datasette_auth_github import GitHubAuth
 
-DEMO_USER_SIGNED_COOKIE = b'asgi_auth="{\\"id\\": \\"123\\"\\054 \\"name\\": \\"GitHub User\\"\\054 \\"username\\": \\"demouser\\"\\054 \\"email\\": \\"demouser@example.com\\"}:IvBRqdgUQfPCvnMwhvmm2iH-6cY"; Path=/'
+DEMO_USER_SIGNED_COOKIE = b'asgi_auth="{\\"id\\":\\"123\\"\\054\\"name\\":\\"GitHub User\\"\\054\\"username\\":\\"demouser\\"\\054\\"email\\":\\"demouser@example.com\\"}:-IODUh-3ctRVgrpTkRNEr-5s8Ys"; Path=/'
 
 
 @pytest.fixture

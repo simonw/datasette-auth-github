@@ -258,7 +258,7 @@ class GitHubAuth(AsgiAuth):
 
             # Set a signed cookie and redirect to homepage
             signer = Signer(self.cookie_secret)
-            signed_cookie = signer.sign(json.dumps(auth))
+            signed_cookie = signer.sign(json.dumps(auth, separators=(",", ":")))
             output_cookies = SimpleCookie()
             output_cookies[self.cookie_name] = signed_cookie
             output_cookies[self.cookie_name]["path"] = "/"
