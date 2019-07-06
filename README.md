@@ -65,3 +65,19 @@ By default the plugin will allow any GitHub user to log in. You can restrict all
 }
 ```
 You can list one or more GitHub usernames here.
+
+## Restricting access to specific GitHub organizations
+
+You can also restrict access to users who are members of a specific GitHub organization:
+
+```json
+{
+    "plugins": {
+        "datasette-auth-github": {
+            "client_id": "...",
+            "client_secret": "...",
+            "allow_orgs": ["datasette-project"]
+        }
+    }
+}
+```
