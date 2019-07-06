@@ -89,6 +89,7 @@ class AsgiAuth:
         if scope.get("type") != "http":
             await self.app(scope, receive, send)
             return
+        send = self.wrapped_send(send)
         if scope.get("path") == self.logout_path:
             headers = [["location", "/"]]
             output_cookies = SimpleCookie()
@@ -106,6 +107,23 @@ class AsgiAuth:
             await self.app(dict(scope, auth=auth), receive, send)
         else:
             await self.require_auth(scope, receive, send)
+
+    def wrapped_send(self, send):
+        async def wrapped_send(event):
+            # We only wrap http.response.start with headers
+            if not (event["type"] == "http.response.start" and event.get("headers")):
+                await send(event)
+                return
+            # Rebuild headers to include cache-control: private
+            original_headers = event.get("headers") or []
+            new_headers = [
+                [key, value]
+                for key, value in original_headers
+                if key.lower() != b"cache-control"
+            ]
+            new_headers.append([b"cache-control", b"private"])
+            await send({**event, **{"headers": new_headers}})
+        return wrapped_send
 
     def cookies_from_scope(self, scope):
         cookie = dict(scope.get("headers") or {}).get(b"cookie")

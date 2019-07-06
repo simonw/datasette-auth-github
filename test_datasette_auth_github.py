@@ -35,6 +35,7 @@ async def test_wrapped_app_redirects_to_github(wrapped_app):
                 b"https://github.com/login/oauth/authorize?scope=user:email&client_id=x_client_id",
             ],
             [b"content-type", b"text/html"],
+            [b"cache-control", b"private"],
         ],
     }
     assert (await instance.receive_output(1)) == {
@@ -66,6 +67,7 @@ async def test_oauth_callback_call_apis_and_sets_cookie(wrapped_app):
             [b"location", b"/"],
             [b"set-cookie", DEMO_USER_SIGNED_COOKIE],
             [b"content-type", b"text/html"],
+            [b"cache-control", b"private"],
         ],
     } == output
 
@@ -79,7 +81,10 @@ async def test_signed_cookie_allows_access(wrapped_app):
             "http_version": "1.0",
             "method": "GET",
             "path": "/",
-            "headers": [[b"cookie", DEMO_USER_SIGNED_COOKIE]],
+            "headers": [
+                [b"cookie", DEMO_USER_SIGNED_COOKIE],
+                [b"cache-control", b"private"],
+            ],
         },
     )
     await instance.send_input({"type": "http.request"})
@@ -87,7 +92,7 @@ async def test_signed_cookie_allows_access(wrapped_app):
     assert {
         "type": "http.response.start",
         "status": 200,
-        "headers": [[b"content-type", b"text/html"]],
+        "headers": [[b"content-type", b"text/html"], [b"cache-control", b"private"]],
     } == output
 
 
@@ -153,6 +158,7 @@ async def test_logout(wrapped_app):
             [b"set-cookie", b'asgi_auth=""; Path=/'],
             [b"set-cookie", b"asgi_auth_logout=stay-logged-out; Path=/"],
             [b"content-type", b"text/html"],
+            [b"cache-control", b"private"],
         ],
     } == output
 
@@ -162,7 +168,7 @@ async def assert_returns_logged_out_screen(instance):
     assert {
         "type": "http.response.start",
         "status": 200,
-        "headers": [[b"content-type", b"text/html"]],
+        "headers": [[b"content-type", b"text/html"], [b"cache-control", b"private"]],
     } == output
     output = await instance.receive_output(1)
     assert b"<h1>Logged out</h1>" in output["body"]
@@ -202,7 +208,10 @@ async def hello_world_app(scope, receive, send):
         {
             "type": "http.response.start",
             "status": 200,
-            "headers": [[b"content-type", b"text/html"]],
+            "headers": [
+                [b"content-type", b"text/html"],
+                [b"cache-control", b"max-age=123"],
+            ],
         }
     )
     await send({"type": "http.response.body", "body": b'{"hello": "world"}'})
