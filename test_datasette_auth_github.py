@@ -202,6 +202,33 @@ async def test_stay_logged_out_is_respected(wrapped_app):
     await assert_returns_logged_out_screen(instance)
 
 
+@pytest.mark.asyncio
+async def test_allow_users(wrapped_app):
+    wrapped_app.allow_users = ["otheruser"]
+    wrapped_app.github_api_client = AsyncClient(dispatch=MockGithubApiDispatch())
+    scope = {
+        "type": "http",
+        "http_version": "1.0",
+        "method": "GET",
+        "path": "/-/auth-callback",
+        "query_string": b"code=github-code-here",
+    }
+    instance = ApplicationCommunicator(wrapped_app, scope)
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    # Should return forbidden
+    assert {"type": "http.response.start", "status": 403} == {
+        "type": output["type"],
+        "status": output["status"],
+    }
+    # Try again with demouser whitelisted
+    wrapped_app.allow_users = ["demouser"]
+    instance = ApplicationCommunicator(wrapped_app, scope)
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    assert 302 == output["status"]
+
+
 async def hello_world_app(scope, receive, send):
     assert scope["type"] == "http"
     await send(
