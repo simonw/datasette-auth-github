@@ -1,7 +1,7 @@
 from setuptools import setup
 import os
 
-VERSION = "0.3.1"
+VERSION = "0.3.2"
 
 
 def get_long_description():
@@ -21,11 +21,12 @@ setup(
     url="https://github.com/simonw/datasette-auth-github",
     license="Apache License, Version 2.0",
     version=VERSION,
-    py_modules=["datasette_auth_github"],
+    packages=["datasette_auth_github"],
     entry_points={"datasette": ["auth_github = datasette_auth_github"]},
     install_requires=["http3~=0.6.6"],
     extras_require={
         "test": ["datasette", "pytest", "pytest-asyncio", "asgiref~=3.1.2"]
     },
     tests_require=["datasette-auth-github[test]"],
+    package_data={"datasette_auth_github": ["templates/*.html"]},
 )
