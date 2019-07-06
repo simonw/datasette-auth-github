@@ -8,9 +8,9 @@ Datasette plugin that authenticates users against GitHub.
 
 This requires datasette master - it uses unreleased plugin hooks.
 
-Usage instructions:
+## Setup instructions
 
-* Install the plugin
+* Install the plugin - `pip install datasette-auth-github`
 * Create a GitHub OAuth app: https://github.com/settings/applications/new
 * Set the Authorization callback URL to `http://127.0.0.1:8001/-/auth-callback`
 * Create a `metadata.json` file with the following structure:
@@ -48,3 +48,20 @@ If you would rather they saw a "You are logged out" screen with a button first, 
     }
 }
 ```
+
+## Restricting access to specific users
+
+By default the plugin will allow any GitHub user to log in. You can restrict allowed users to a specific list using the `allow_users` configuration option:
+
+```json
+{
+    "plugins": {
+        "datasette-auth-github": {
+            "client_id": "...",
+            "client_secret": "...",
+            "allow_users": ["simonw"]
+        }
+    }
+}
+```
+You can list one or more GitHub usernames here.

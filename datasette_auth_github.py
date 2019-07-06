@@ -123,6 +123,7 @@ class AsgiAuth:
             ]
             new_headers.append([b"cache-control", b"private"])
             await send({**event, **{"headers": new_headers}})
+
         return wrapped_send
 
     def cookies_from_scope(self, scope):
@@ -155,13 +156,30 @@ class GitHubAuth(AsgiAuth):
     github_api_client = http3.AsyncClient()
 
     def __init__(
-        self, app, cookie_secret, client_id, client_secret, disable_auto_login=False
+        self,
+        app,
+        cookie_secret,
+        client_id,
+        client_secret,
+        disable_auto_login=False,
+        allow_users=None,
     ):
         self.app = app
         self.cookie_secret = cookie_secret
         self.client_id = client_id
         self.client_secret = client_secret
         self.disable_auto_login = disable_auto_login
+        self.allow_users = allow_users
+
+    async def user_is_allowed(self, auth, access_token):
+        # If no permissions set at all, user is allowed
+        if self.allow_users is None:
+            return True
+        if self.allow_users is not None:
+            # Check if the user is in that list
+            if auth["username"] in self.allow_users:
+                return True
+        return False
 
     async def require_auth(self, scope, receive, send):
         if scope.get("path") == self.callback_path:
@@ -206,13 +224,22 @@ class GitHubAuth(AsgiAuth):
             except ValueError:
                 await send_html(send, "Could not load GitHub profile")
                 return
-            # Set a signed cookie and redirect to homepage
             auth = {
                 "id": str(profile["id"]),
                 "name": profile["name"],
                 "username": profile["login"],
                 "email": profile["email"],
             }
+            # Are they allowed?
+            if not (await self.user_is_allowed(auth, access_token)):
+                await send_html(
+                    send,
+                    """{}<h1>Access forbidden</h1>""".format(LOGIN_CSS),
+                    status=403,
+                )
+                return
+
+            # Set a signed cookie and redirect to homepage
             signer = Signer(self.cookie_secret)
             signed_cookie = signer.sign(json.dumps(auth))
             output_cookies = SimpleCookie()
@@ -250,6 +277,7 @@ def asgi_wrapper(datasette):
     client_id = config.get("client_id")
     client_secret = config.get("client_secret")
     disable_auto_login = bool(config.get("disable_auto_login"))
+    allow_users = config.get("allow_users")
 
     def wrap_with_asgi_auth(app):
         if not (client_id and client_secret):
@@ -262,6 +290,7 @@ def asgi_wrapper(datasette):
             client_id=client_id,
             client_secret=client_secret,
             disable_auto_login=disable_auto_login,
+            allow_users=allow_users,
         )
 
     return wrap_with_asgi_auth
