@@ -222,3 +222,8 @@ def asgi_wrapper(datasette):
         )
 
     return wrap_with_asgi_auth
+
+
+@hookimpl
+def extra_template_vars(request):
+    return {"auth": request.scope.get("auth")}

@@ -1,0 +1,20 @@
+{% extends "default:base.html" %}
+
+{% block extra_head %}
+<style type="text/css">
+.hd .logout {
+    float: right;
+    text-align: right;
+    padding-left: 1em;
+}
+</style>
+{% endblock %}
+
+{% block nav %}
+    {{ super() }}
+    {% if auth and auth.username %}
+        <p class="logout">
+            <strong>{{ auth.username }}</strong> &middot; <a href="/-/logout">Log out</a>
+        </p>
+    {% endif %}
+{% endblock %}
