@@ -229,6 +229,33 @@ async def test_allow_users(wrapped_app):
     assert 302 == output["status"]
 
 
+@pytest.mark.asyncio
+async def test_allow_orgs(wrapped_app):
+    wrapped_app.allow_orgs = ["my-org"]
+    wrapped_app.github_api_client = AsyncClient(dispatch=MockGithubApiDispatch())
+    scope = {
+        "type": "http",
+        "http_version": "1.0",
+        "method": "GET",
+        "path": "/-/auth-callback",
+        "query_string": b"code=github-code-here",
+    }
+    instance = ApplicationCommunicator(wrapped_app, scope)
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    # Should return forbidden
+    assert {"type": "http.response.start", "status": 403} == {
+        "type": output["type"],
+        "status": output["status"],
+    }
+    # Try again with an org they are a member of
+    wrapped_app.allow_orgs = ["demouser-org"]
+    instance = ApplicationCommunicator(wrapped_app, scope)
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    assert 302 == output["status"]
+
+
 async def hello_world_app(scope, receive, send):
     assert scope["type"] == "http"
     await send(
@@ -253,6 +280,26 @@ class MockGithubApiDispatch(AsyncDispatcher):
             return AsyncResponse(
                 codes.OK, content=self.access_token_response, request=request
             )
+        elif (
+            request.url.path.startswith("/orgs/")
+            and "/memberships/" in request.url.path
+        ):
+            # It's an organization membership check
+            org = request.url.path.split("/orgs/")[1].split("/")[0]
+            if org == "demouser-org":
+                return AsyncResponse(
+                    codes.OK,
+                    content=json.dumps({"state": "active", "role": "member"}).encode(
+                        "utf8"
+                    ),
+                    request=request,
+                )
+            else:
+                return AsyncResponse(
+                    codes.FORBIDDEN,
+                    content=json.dumps({"message": "Not a member"}).encode("utf8"),
+                    request=request,
+                )
         elif (
             request.url.path == "/user"
             and request.url.query == "access_token=x_access_token"

@@ -163,6 +163,7 @@ class GitHubAuth(AsgiAuth):
         client_secret,
         disable_auto_login=False,
         allow_users=None,
+        allow_orgs=None,
     ):
         self.app = app
         self.cookie_secret = cookie_secret
@@ -170,15 +171,25 @@ class GitHubAuth(AsgiAuth):
         self.client_secret = client_secret
         self.disable_auto_login = disable_auto_login
         self.allow_users = allow_users
+        self.allow_orgs = allow_orgs
 
     async def user_is_allowed(self, auth, access_token):
         # If no permissions set at all, user is allowed
-        if self.allow_users is None:
+        if self.allow_users is None and self.allow_orgs is None:
             return True
         if self.allow_users is not None:
             # Check if the user is in that list
             if auth["username"] in self.allow_users:
                 return True
+        if self.allow_orgs is not None:
+            # For each org, check if user is a member
+            for org in self.allow_orgs:
+                url = "https://api.github.com/orgs/{}/memberships/{}?access_token={}".format(
+                    org, auth["username"], access_token
+                )
+                response = await self.github_api_client.get(url)
+                if response.status_code == 200:
+                    return True
         return False
 
     async def require_auth(self, scope, receive, send):
@@ -278,6 +289,7 @@ def asgi_wrapper(datasette):
     client_secret = config.get("client_secret")
     disable_auto_login = bool(config.get("disable_auto_login"))
     allow_users = config.get("allow_users")
+    allow_orgs = config.get("allow_orgs")
 
     def wrap_with_asgi_auth(app):
         if not (client_id and client_secret):
@@ -291,6 +303,7 @@ def asgi_wrapper(datasette):
             client_secret=client_secret,
             disable_auto_login=disable_auto_login,
             allow_users=allow_users,
+            allow_orgs=allow_orgs,
         )
 
     return wrap_with_asgi_auth
