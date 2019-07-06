@@ -6,6 +6,8 @@ from http3 import AsyncClient, AsyncDispatcher, AsyncResponse, codes
 
 from datasette_auth_github import GitHubAuth
 
+DEMO_USER_SIGNED_COOKIE = b'asgi_auth="{\\"id\\": \\"123\\"\\054 \\"name\\": \\"GitHub User\\"\\054 \\"username\\": \\"demouser\\"\\054 \\"email\\": \\"demouser@example.com\\"}:IvBRqdgUQfPCvnMwhvmm2iH-6cY"; Path=/'
+
 
 @pytest.fixture
 def wrapped_app():
@@ -62,12 +64,30 @@ async def test_oauth_callback_call_apis_and_sets_cooki(wrapped_app):
         "status": 302,
         "headers": [
             [b"location", b"/"],
-            [
-                b"set-cookie",
-                b'asgi_auth="{\\"id\\": \\"123\\"\\054 \\"name\\": \\"GitHub User\\"\\054 \\"username\\": \\"demouser\\"\\054 \\"email\\": \\"demouser@example.com\\"}:IvBRqdgUQfPCvnMwhvmm2iH-6cY"; Path=/',
-            ],
+            [b"set-cookie", DEMO_USER_SIGNED_COOKIE],
             [b"content-type", b"text/html"],
         ],
+    } == output
+
+
+@pytest.mark.asyncio
+async def test_signed_cookie_allows_access(wrapped_app):
+    instance = ApplicationCommunicator(
+        wrapped_app,
+        {
+            "type": "http",
+            "http_version": "1.0",
+            "method": "GET",
+            "path": "/",
+            "headers": [[b"cookie", DEMO_USER_SIGNED_COOKIE]],
+        },
+    )
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    assert {
+        "type": "http.response.start",
+        "status": 200,
+        "headers": [[b"content-type", b"text/html"]],
     } == output
 
 
@@ -136,7 +156,7 @@ async def hello_world_app(scope, receive, send):
         {
             "type": "http.response.start",
             "status": 200,
-            "headers": [[b"content-type", b"application/json"]],
+            "headers": [[b"content-type", b"text/html"]],
         }
     )
     await send({"type": "http.response.body", "body": b'{"hello": "world"}'})
