@@ -44,7 +44,7 @@ async def test_wrapped_app_redirects_to_github(wrapped_app):
 
 
 @pytest.mark.asyncio
-async def test_oauth_callback_call_apis_and_sets_cooki(wrapped_app):
+async def test_oauth_callback_call_apis_and_sets_cookie(wrapped_app):
     wrapped_app.github_api_client = AsyncClient(dispatch=MockGithubApiDispatch())
     instance = ApplicationCommunicator(
         wrapped_app,
@@ -110,6 +110,31 @@ async def test_corrupt_cookie_signature_is_denied_access(wrapped_app):
     await instance.send_input({"type": "http.request"})
     output = await instance.receive_output(1)
     assert 302 == output["status"]
+
+
+@pytest.mark.asyncio
+async def test_invalid_github_code_denied_access(wrapped_app):
+    wrapped_app.github_api_client = AsyncClient(
+        dispatch=MockGithubApiDispatch(
+            b"error=bad_verification_code&error_description=The+code+passed+is+incorrect"
+        )
+    )
+    instance = ApplicationCommunicator(
+        wrapped_app,
+        {
+            "type": "http",
+            "http_version": "1.0",
+            "method": "GET",
+            "path": "/-/auth-callback",
+            "query_string": b"code=github-code-here",
+        },
+    )
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    # Should show error
+    assert 200 == output["status"]
+    output = await instance.receive_output(1)
+    assert b"<h1>GitHub authentication error</h1>" in output["body"]
 
 
 @pytest.mark.asyncio
@@ -184,10 +209,13 @@ async def hello_world_app(scope, receive, send):
 
 
 class MockGithubApiDispatch(AsyncDispatcher):
+    def __init__(self, access_token_response=b"access_token=x_access_token"):
+        self.access_token_response = access_token_response
+
     async def send(self, request, verify=None, cert=None, timeout=None):
         if request.url.path == "/login/oauth/access_token" and request.method == "POST":
             return AsyncResponse(
-                codes.OK, content=b"access_token=x_access_token", request=request
+                codes.OK, content=self.access_token_response, request=request
             )
         elif (
             request.url.path == "/user"

@@ -10,6 +10,13 @@ import http3
 from datasette import hookimpl
 
 SALT = "datasette-auth-github"
+LOGIN_CSS = """
+<style>
+body {
+    font-family: "Helvetica Neue", sans-serif;
+    font-size: 1rem;
+}</style>
+"""
 
 
 class BadSignature(Exception):
@@ -157,6 +164,17 @@ class GitHubAuth(AsgiAuth):
                 )
             ).text
             parsed = dict(parse_qsl(github_response))
+            # b'error=bad_verification_code&error_description=The+code+passed...'
+            if parsed.get("error"):
+                await send_html(
+                    send,
+                    "{}<h1>GitHub authentication error</h1><p>{}</p><p>{}</p>".format(
+                        LOGIN_CSS,
+                        parsed["error"],
+                        parsed.get("error_description") or "",
+                    ),
+                )
+                return
             access_token = parsed.get("access_token")
             if not access_token:
                 await send_html(send, "No valid access token")
@@ -200,12 +218,9 @@ class GitHubAuth(AsgiAuth):
             ):
                 await send_html(
                     send,
-                    """<style>body {
-                        font-family: "Helvetica Neue", sans-serif;
-                        font-size: 1rem;
-                    }</style>
-                    <h1>Logged out</h1><p><a href="%s">Log in with GitHub</a></p>"""
-                    % (github_login_url),
+                    """{}<h1>Logged out</h1><p><a href="{}">Log in with GitHub</a></p>""".format(
+                        LOGIN_CSS, github_login_url
+                    ),
                 )
             else:
                 await send_html(send, "", 302, [["location", github_login_url]])
