@@ -92,6 +92,27 @@ async def test_signed_cookie_allows_access(wrapped_app):
 
 
 @pytest.mark.asyncio
+async def test_corrupt_cookie_signature_is_denied_access(wrapped_app):
+    cookie = DEMO_USER_SIGNED_COOKIE
+    # Corrupt the signature
+    body, sig = cookie.rsplit(b":", 1)
+    corrupt_cookie = body + b":" + b"x" + sig
+    instance = ApplicationCommunicator(
+        wrapped_app,
+        {
+            "type": "http",
+            "http_version": "1.0",
+            "method": "GET",
+            "path": "/",
+            "headers": [[b"cookie", corrupt_cookie]],
+        },
+    )
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    assert 302 == output["status"]
+
+
+@pytest.mark.asyncio
 async def test_logout(wrapped_app):
     instance = ApplicationCommunicator(
         wrapped_app,
