@@ -79,6 +79,9 @@ class AsgiAuth:
         self.cookie_secret = cookie_secret
 
     async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
         if scope.get("path") == self.logout_path:
             headers = [["location", "/"]]
             output_cookies = SimpleCookie()
