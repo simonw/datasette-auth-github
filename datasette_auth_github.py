@@ -54,16 +54,15 @@ class Signer:
 
 
 async def send_html(send, html, status=200, headers=None):
-    headers = headers or {}
-    if "content-type" not in [h.lower() for h in headers]:
-        headers["content-type"] = "text/html"
+    headers = headers or []
+    if "content-type" not in [h.lower() for h, v in headers]:
+        headers.append(["content-type", "text/html"])
     await send(
         {
             "type": "http.response.start",
             "status": status,
             "headers": [
-                [key.encode("utf8"), value.encode("utf8")]
-                for key, value in headers.items()
+                [key.encode("utf8"), value.encode("utf8")] for key, value in headers
             ],
         }
     )
@@ -72,26 +71,42 @@ async def send_html(send, html, status=200, headers=None):
 
 class AsgiAuth:
     cookie_name = "asgi_auth"
+    logout_path = "/-/logout"
+    logout_cookie_name = "asgi_auth_logout"
 
     def __init__(self, app, cookie_secret):
         self.app = app
         self.cookie_secret = cookie_secret
 
     async def __call__(self, scope, receive, send):
+        if scope.get("path") == self.logout_path:
+            headers = [["location", "/"]]
+            output_cookies = SimpleCookie()
+            output_cookies[self.cookie_name] = ""
+            output_cookies[self.cookie_name]["path"] = "/"
+            headers.append(["set-cookie", output_cookies.output(header="").lstrip()])
+            output_cookies = SimpleCookie()
+            output_cookies[self.logout_cookie_name] = "stay-logged-out"
+            output_cookies[self.logout_cookie_name]["path"] = "/"
+            headers.append(["set-cookie", output_cookies.output(header="").lstrip()])
+            await send_html(send, "", 302, headers)
+            return
         auth = self.auth_from_scope(scope)
         if auth:
-            await self.app(scope, receive, send)
+            await self.app(dict(scope, auth=auth), receive, send)
         else:
             await self.require_auth(scope, receive, send)
 
-    def auth_from_scope(self, scope):
+    def cookies_from_scope(self, scope):
         cookie = dict(scope.get("headers") or {}).get(b"cookie")
         if not cookie:
-            return None
+            return {}
         simple_cookie = SimpleCookie()
         simple_cookie.load(cookie.decode("utf8"))
-        cookies = {key: morsel.value for key, morsel in simple_cookie.items()}
-        auth_cookie = cookies.get(self.cookie_name)
+        return {key: morsel.value for key, morsel in simple_cookie.items()}
+
+    def auth_from_scope(self, scope):
+        auth_cookie = self.cookies_from_scope(scope).get(self.cookie_name)
         if not auth_cookie:
             return None
         # Decode the signed cookie
@@ -165,22 +180,27 @@ class GitHubAuth(AsgiAuth):
                 send,
                 "",
                 302,
-                {
-                    "location": "/",
-                    "set-cookie": output_cookies.output(header="").lstrip(),
-                },
+                [
+                    ["location", "/"],
+                    ["set-cookie", output_cookies.output(header="").lstrip()],
+                ],
             )
         else:
-            await send_html(
-                send,
-                "",
-                302,
-                {
-                    "location": "https://github.com/login/oauth/authorize?scope=user:email&client_id={}".format(
-                        self.client_id
-                    )
-                },
+            github_login_url = "https://github.com/login/oauth/authorize?scope=user:email&client_id={}".format(
+                self.client_id
             )
+            if self.cookies_from_scope(scope).get(self.logout_cookie_name):
+                await send_html(
+                    send,
+                    """<style>body {
+                        font-family: "Helvetica Neue", sans-serif;
+                        font-size: 1rem;
+                    }</style>
+                    <h1>Logged out</h1><p><a href="%s">Log in with GitHub</a></p>"""
+                    % (github_login_url),
+                )
+            else:
+                await send_html(send, "", 302, [["location", github_login_url]])
 
 
 @hookimpl
