@@ -173,6 +173,12 @@ class GitHubAuth(AsgiAuth):
         self.allow_users = allow_users
         self.allow_orgs = allow_orgs
 
+    def oauth_scope(self):
+        if self.allow_orgs is None:
+            return "user:email"
+        else:
+            return "user"
+
     async def user_is_allowed(self, auth, access_token):
         # If no permissions set at all, user is allowed
         if self.allow_users is None and self.allow_orgs is None:
@@ -266,8 +272,8 @@ class GitHubAuth(AsgiAuth):
                 ],
             )
         else:
-            github_login_url = "https://github.com/login/oauth/authorize?scope=user:email&client_id={}".format(
-                self.client_id
+            github_login_url = "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(
+                self.oauth_scope(), self.client_id
             )
             if self.disable_auto_login or self.cookies_from_scope(scope).get(
                 self.logout_cookie_name

@@ -256,6 +256,37 @@ async def test_allow_orgs(wrapped_app):
     assert 302 == output["status"]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "config,expected_scope",
+    [[{"allow_orgs": ["foo"]}, "user"], [{"allow_users": ["foo"]}, "user:email"]],
+)
+async def test_oauth_scope(config, expected_scope, wrapped_app):
+    for key, value in config.items():
+        setattr(wrapped_app, key, value)
+    instance = ApplicationCommunicator(
+        wrapped_app,
+        {"type": "http", "http_version": "1.0", "method": "GET", "path": "/"},
+    )
+    await instance.send_input({"type": "http.request"})
+    assert (await instance.receive_output(1)) == {
+        "type": "http.response.start",
+        "status": 302,
+        "headers": [
+            [
+                b"location",
+                "https://github.com/login/oauth/authorize?scope={}&client_id=x_client_id".format(
+                    expected_scope
+                ).encode(
+                    "utf8"
+                ),
+            ],
+            [b"content-type", b"text/html"],
+            [b"cache-control", b"private"],
+        ],
+    }
+
+
 async def hello_world_app(scope, receive, send):
     assert scope["type"] == "http"
     await send(
