@@ -129,11 +129,14 @@ class GitHubAuth(AsgiAuth):
     # Tests can over-ride api_client here:
     github_api_client = http3.AsyncClient()
 
-    def __init__(self, app, cookie_secret, client_id, client_secret):
+    def __init__(
+        self, app, cookie_secret, client_id, client_secret, disable_auto_login=False
+    ):
         self.app = app
         self.cookie_secret = cookie_secret
         self.client_id = client_id
         self.client_secret = client_secret
+        self.disable_auto_login = disable_auto_login
 
     async def require_auth(self, scope, receive, send):
         if scope.get("path") == self.callback_path:
@@ -192,7 +195,9 @@ class GitHubAuth(AsgiAuth):
             github_login_url = "https://github.com/login/oauth/authorize?scope=user:email&client_id={}".format(
                 self.client_id
             )
-            if self.cookies_from_scope(scope).get(self.logout_cookie_name):
+            if self.disable_auto_login or self.cookies_from_scope(scope).get(
+                self.logout_cookie_name
+            ):
                 await send_html(
                     send,
                     """<style>body {
@@ -211,6 +216,7 @@ def asgi_wrapper(datasette):
     config = datasette.plugin_config("datasette-auth-github") or {}
     client_id = config.get("client_id")
     client_secret = config.get("client_secret")
+    disable_auto_login = bool(config.get("disable_auto_login"))
 
     def wrap_with_asgi_auth(app):
         if not (client_id and client_secret):
@@ -222,6 +228,7 @@ def asgi_wrapper(datasette):
             cookie_secret=cookie_secret,
             client_id=client_id,
             client_secret=client_secret,
+            disable_auto_login=disable_auto_login,
         )
 
     return wrap_with_asgi_auth

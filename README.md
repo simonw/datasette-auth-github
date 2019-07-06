@@ -32,3 +32,19 @@ Now you can start Datasette like this, passing in the secrets as environment var
         fixtures.db -m metadata.json
 
 Note that hard-coding secrets in `metadata.json` is a bad idea as they will be visible to anyone who can navigate to `/-/metadata`. Instead, we use a new mechanism for [adding secret plugin configuration options](https://datasette.readthedocs.io/en/latest/plugins.html#secret-configuration-values).
+
+By default, the plugin will redirect signed-out users directly to GitHub.
+
+If you would rather they saw a "You are logged out" screen with a button first, you can change this behaviour by adding the "disable_auto_login" setting to your configuration:
+
+```json
+{
+    "plugins": {
+        "datasette-auth-github": {
+            "client_id": "...",
+            "client_secret": "...",
+            "disable_auto_login": true
+        }
+    }
+}
+```

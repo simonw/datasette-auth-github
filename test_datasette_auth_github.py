@@ -91,6 +91,29 @@ async def test_logout(wrapped_app):
     } == output
 
 
+async def assert_returns_logged_out_screen(instance):
+    output = await instance.receive_output(1)
+    assert {
+        "type": "http.response.start",
+        "status": 200,
+        "headers": [[b"content-type", b"text/html"]],
+    } == output
+    output = await instance.receive_output(1)
+    assert b"<h1>Logged out</h1>" in output["body"]
+    assert b"https://github.com/login/oauth/authorize?scope" in output["body"]
+
+
+@pytest.mark.asyncio
+async def test_disable_auto_login_respected(wrapped_app):
+    wrapped_app.disable_auto_login = True
+    instance = ApplicationCommunicator(
+        wrapped_app,
+        {"type": "http", "http_version": "1.0", "method": "GET", "path": "/"},
+    )
+    await instance.send_input({"type": "http.request"})
+    await assert_returns_logged_out_screen(instance)
+
+
 @pytest.mark.asyncio
 async def test_stay_logged_out_is_respected(wrapped_app):
     instance = ApplicationCommunicator(
@@ -104,15 +127,7 @@ async def test_stay_logged_out_is_respected(wrapped_app):
         },
     )
     await instance.send_input({"type": "http.request"})
-    output = await instance.receive_output(1)
-    assert {
-        "type": "http.response.start",
-        "status": 200,
-        "headers": [[b"content-type", b"text/html"]],
-    } == output
-    output = await instance.receive_output(1)
-    assert b"<h1>Logged out</h1>" in output["body"]
-    assert b"https://github.com/login/oauth/authorize?scope" in output["body"]
+    await assert_returns_logged_out_screen(instance)
 
 
 async def hello_world_app(scope, receive, send):
