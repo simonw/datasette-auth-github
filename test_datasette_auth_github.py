@@ -203,8 +203,21 @@ async def test_stay_logged_out_is_respected(wrapped_app):
 
 
 @pytest.mark.asyncio
-async def test_allow_users(wrapped_app):
-    wrapped_app.allow_users = ["otheruser"]
+@pytest.mark.parametrize(
+    "attr,attr_value,should_allow",
+    [
+        ["allow_users", ["otheruser"], False],
+        ["allow_users", ["demouser"], True],
+        ["allow_users", "otheruser", False],
+        ["allow_users", "demouser", True],
+        ["allow_orgs", ["my-org"], False],
+        ["allow_orgs", ["demouser-org"], True],
+        ["allow_orgs", "my-org", False],
+        ["allow_orgs", "demouser-org", True],
+    ],
+)
+async def test_allow_rules(attr, attr_value, should_allow, wrapped_app):
+    setattr(wrapped_app, attr, attr_value)
     wrapped_app.github_api_client = AsyncClient(dispatch=MockGithubApiDispatch())
     scope = {
         "type": "http",
@@ -216,17 +229,24 @@ async def test_allow_users(wrapped_app):
     instance = ApplicationCommunicator(wrapped_app, scope)
     await instance.send_input({"type": "http.request"})
     output = await instance.receive_output(1)
-    # Should return forbidden
-    assert {"type": "http.response.start", "status": 403} == {
-        "type": output["type"],
-        "status": output["status"],
-    }
-    # Try again with demouser whitelisted
-    wrapped_app.allow_users = ["demouser"]
-    instance = ApplicationCommunicator(wrapped_app, scope)
-    await instance.send_input({"type": "http.request"})
-    output = await instance.receive_output(1)
-    assert 302 == output["status"]
+    if should_allow:
+        # Should redirect to homepage
+        assert {
+            "type": "http.response.start",
+            "status": 302,
+            "headers": [
+                [b"location", b"/"],
+                [b"set-cookie", DEMO_USER_SIGNED_COOKIE],
+                [b"content-type", b"text/html"],
+                [b"cache-control", b"private"],
+            ],
+        } == output
+    else:
+        # Should return forbidden
+        assert {"type": "http.response.start", "status": 403} == {
+            "type": output["type"],
+            "status": output["status"],
+        }
 
 
 @pytest.mark.asyncio

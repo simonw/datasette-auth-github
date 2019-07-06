@@ -81,3 +81,12 @@ You can also restrict access to users who are members of a specific GitHub organ
     }
 }
 ```
+
+`allow_orgs` and `allow_users` can both be single strings rather than lists. This means you can publish a new datasette and configure the plugin entirely from the command-line like so:
+
+    $ datasette publish nowv1 fixtures.db \
+        --alias datasette-auth-demo \
+        --install=datasette-auth-github \
+        --plugin-secret datasette-auth-github client_id 86e397f7fd7a54d26a3a \
+        --plugin-secret datasette-auth-github client_secret ... \
+        --plugin-secret datasette-auth-github allow_user simonw

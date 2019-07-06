@@ -184,12 +184,18 @@ class GitHubAuth(AsgiAuth):
         if self.allow_users is None and self.allow_orgs is None:
             return True
         if self.allow_users is not None:
+            allow_users = self.allow_users
+            if isinstance(allow_users, str):
+                allow_users = [allow_users]
             # Check if the user is in that list
-            if auth["username"] in self.allow_users:
+            if auth["username"] in allow_users:
                 return True
         if self.allow_orgs is not None:
+            allow_orgs = self.allow_orgs
+            if isinstance(allow_orgs, str):
+                allow_orgs = [allow_orgs]
             # For each org, check if user is a member
-            for org in self.allow_orgs:
+            for org in allow_orgs:
                 url = "https://api.github.com/orgs/{}/memberships/{}?access_token={}".format(
                     org, auth["username"], access_token
                 )
