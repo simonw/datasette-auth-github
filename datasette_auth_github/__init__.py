@@ -1,7 +1,6 @@
 from datasette import hookimpl
 
 from .github_auth import GitHubAuth
-from .utils import salted_hmac
 
 
 @hookimpl
