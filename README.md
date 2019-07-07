@@ -98,7 +98,7 @@ If your organization is [arranged into teams](https://help.github.com/en/article
 
 ## Using this with the 'datasette publish' command
 
-`allow_orgs`, `allow_users` and `allow_teams` can both be single strings rather than lists. This means you can publish a new datasette and configure the plugin entirely from the command-line like so:
+`allow_orgs`, `allow_users` and `allow_teams` can both be single strings rather than lists. This means you can publish data and configure the plugin entirely from the command-line like so:
 
     $ datasette publish nowv1 fixtures.db \
         --alias datasette-auth-demo \
@@ -124,6 +124,26 @@ You can change the cookie expiration policy in seconds using the `cookie_ttl` se
     }
 }
 ```
+
+## Forced cookie expiration
+
+If you are using GitHub organizations or teams with this plugin, you need to be aware that users may continue to hold valid cookies even after they have been removed from a team or organization - generally for up to 24 hours unless you have changed the `cookie_ttl`.
+
+If you need to revoke access to your instance immediately, you can do so using the `cookie_version` setting. Simply modify your metadata to add a new value for `cookie_version` and restart or redeploy your Datasette instance:
+
+```json
+{
+    "plugins": {
+        "datasette-auth-github": {
+            "client_id": "...",
+            "client_secret": "...",
+            "cookie_version": 2
+        }
+    }
+}
+```
+
+All existing cookies will be invalidated. Users who are still members of the organization or team will be able to sign in again - and in fact may be signed in automatically. Users who have been removed from the organization or team will lose access to the Datasette instance.
 
 ## Using this as ASGI middleware without Datasette
 

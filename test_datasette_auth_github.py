@@ -147,6 +147,28 @@ async def test_expired_cookie_is_denied_access(wrapped_app):
 
 
 @pytest.mark.asyncio
+async def test_incrementing_cookie_version_denies_access(wrapped_app):
+    cookie = signed_auth_cookie_header()
+    scope = {
+        "type": "http",
+        "http_version": "1.0",
+        "method": "GET",
+        "path": "/",
+        "headers": [[b"cookie", cookie]],
+    }
+    instance = ApplicationCommunicator(wrapped_app, scope)
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    assert 200 == output["status"]
+    # Equivalent of incrementing the cooke version
+    wrapped_app.cookie_secret += "2"
+    instance = ApplicationCommunicator(wrapped_app, scope)
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    assert 302 == output["status"]
+
+
+@pytest.mark.asyncio
 async def test_invalid_github_code_denied_access(wrapped_app):
     wrapped_app.github_api_client = AsyncClient(
         dispatch=MockGithubApiDispatch(

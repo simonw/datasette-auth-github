@@ -361,12 +361,16 @@ def asgi_wrapper(datasette):
     allow_orgs = config.get("allow_orgs")
     allow_teams = config.get("allow_teams")
     cookie_ttl = config.get("cookie_ttl") or 24 * 60 * 60
+    cookie_version = config.get("cookie_version") or "default"
 
     def wrap_with_asgi_auth(app):
         if not (client_id and client_secret):
             return app
 
-        cookie_secret = salted_hmac("cookie_secret", client_id, client_secret).digest()
+        cookie_secret = salted_hmac(
+            "cookie_secret", client_id, client_secret + str(cookie_version)
+        ).digest()
+
         return GitHubAuth(
             app,
             cookie_secret=cookie_secret,
