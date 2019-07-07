@@ -128,6 +128,25 @@ async def test_corrupt_cookie_signature_is_denied_access(wrapped_app):
 
 
 @pytest.mark.asyncio
+async def test_expired_cookie_is_denied_access(wrapped_app):
+    cookie = signed_auth_cookie_header(ts=time.time() - 36 * 60 * 60)
+    # Corrupt the signature
+    instance = ApplicationCommunicator(
+        wrapped_app,
+        {
+            "type": "http",
+            "http_version": "1.0",
+            "method": "GET",
+            "path": "/",
+            "headers": [[b"cookie", cookie]],
+        },
+    )
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    assert 302 == output["status"]
+
+
+@pytest.mark.asyncio
 async def test_invalid_github_code_denied_access(wrapped_app):
     wrapped_app.github_api_client = AsyncClient(
         dispatch=MockGithubApiDispatch(
@@ -320,7 +339,7 @@ async def test_oauth_scope(config, expected_scope, wrapped_app):
     }
 
 
-def signed_auth_cookie_header():
+def signed_auth_cookie_header(ts=None):
     signer = Signer(TEST_COOKIE_SECRET)
     cookie = SimpleCookie()
     cookie["asgi_auth"] = signer.sign(
@@ -330,7 +349,7 @@ def signed_auth_cookie_header():
                 "name": "GitHub User",
                 "username": "demouser",
                 "email": "demouser@example.com",
-                "ts": int(time.time()),
+                "ts": ts or int(time.time()),
             },
             separators=(",", ":"),
         )
