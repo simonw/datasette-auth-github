@@ -95,7 +95,7 @@ def assert_redirects_and_sets_cookie(app, output, redirect_to="/"):
     # Convert headers into a tuple of tuples for x in y lookups
     headers = tuple([tuple(pair) for pair in output["headers"]])
     assert (b"location", redirect_to.encode("utf8")) in headers
-    assert (b"content-type", b"text/html") in headers
+    assert (b"content-type", b"text/html; charset=UTF-8") in headers
     assert (b"cache-control", b"private") in headers
     # ... and confirm the cookie was set
     cookie_values = [value for key, value in headers if key == b"set-cookie"]
@@ -132,7 +132,10 @@ async def test_signed_cookie_allows_access(path, wrapped_app):
     assert {
         "type": "http.response.start",
         "status": 200,
-        "headers": [[b"content-type", b"text/html"], [b"cache-control", b"private"]],
+        "headers": [
+            [b"content-type", b"text/html; charset=UTF-8"],
+            [b"cache-control", b"private"],
+        ],
     } == output
 
 
@@ -246,7 +249,7 @@ async def test_logout(wrapped_app):
     headers = tuple([tuple(pair) for pair in output["headers"]])
     assert (b"location", b"/") in headers
     assert (b"set-cookie", b"asgi_auth_logout=stay-logged-out; Path=/") in headers
-    assert (b"content-type", b"text/html") in headers
+    assert (b"content-type", b"text/html; charset=UTF-8") in headers
     assert (b"cache-control", b"private") in headers
     # asgi_auth should have been set with max-age and expiry
     asgi_auth_cookie = [
@@ -264,7 +267,7 @@ async def assert_returns_logged_out_screen(instance, path):
     assert 200 == output["status"]
     assert "http.response.start" == output["type"]
     headers = tuple([tuple(pair) for pair in output["headers"]])
-    assert (b"content-type", b"text/html") in headers
+    assert (b"content-type", b"text/html; charset=UTF-8") in headers
     assert (b"cache-control", b"private") in headers
     simple_cookie = SimpleCookie()
     for key, value in headers:
@@ -433,7 +436,7 @@ async def hello_world_app(scope, receive, send):
             "type": "http.response.start",
             "status": 200,
             "headers": [
-                [b"content-type", b"text/html"],
+                [b"content-type", b"text/html; charset=UTF-8"],
                 [b"cache-control", b"max-age=123"],
             ],
         }

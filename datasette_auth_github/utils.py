@@ -36,7 +36,7 @@ class Signer:
 async def send_html(send, html, status=200, headers=None):
     headers = headers or []
     if "content-type" not in [h.lower() for h, v in headers]:
-        headers.append(["content-type", "text/html"])
+        headers.append(["content-type", "text/html; charset=UTF-8"])
     await send(
         {
             "type": "http.response.start",
