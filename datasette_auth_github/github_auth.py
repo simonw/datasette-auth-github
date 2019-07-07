@@ -1,3 +1,4 @@
+import hashlib
 import json
 import time
 from http.cookies import SimpleCookie
@@ -27,17 +28,17 @@ class GitHubAuth:
     def __init__(
         self,
         app,
-        cookie_secret,
         client_id,
         client_secret,
         cookie_ttl=24 * 60 * 60,
+        cookie_secret=None,
+        cookie_version=None,
         disable_auto_login=False,
         allow_users=None,
         allow_orgs=None,
         allow_teams=None,
     ):
         self.app = app
-        self.cookie_secret = cookie_secret
         self.client_id = client_id
         self.client_secret = client_secret
         self.cookie_ttl = cookie_ttl
@@ -46,6 +47,15 @@ class GitHubAuth:
         self.allow_orgs = allow_orgs
         self.allow_teams = allow_teams
         self.team_to_team_id = {}
+
+        cookie_version = cookie_version or "default"
+        # Derive cookie_secret (used for signing cookies)
+        self.cookie_secret = hashlib.pbkdf2_hmac(
+            "sha256",
+            "{}:{}:{}".format(client_id, client_secret, cookie_version).encode("utf8"),
+            b"cookie_secret_salt",
+            100000,
+        )
 
     def oauth_scope(self):
         if self.allow_teams is not None:
