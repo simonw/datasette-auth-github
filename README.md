@@ -124,3 +124,29 @@ You can change the cookie expiration policy in seconds using the `cookie_ttl` se
     }
 }
 ```
+
+## Using this as ASGI middleware without Datasette
+
+While `datasette-auth-github` is designed to be used as a [Datasette plugin](https://datasette.readthedocs.io/en/stable/plugins.html), it can also be used as regular ASGI middleware to add GitHub authentication to any ASGI application.
+
+Here's how to do that:
+
+```python
+from datasette_auth_github import GitHubAuth
+from your_asgi_app import asgi_app
+
+
+app = GitHubAuth(
+    asgi_app,
+    client_id="github_client_id",
+    client_secret="github_client_secret",
+    # Other options:
+    # cookie_ttl=60 * 60,
+    # disable_auto_login=True,
+    # allow_users=["simonw"],
+    # allow_orgs=["my-org"],
+    # allow_teams=["my-org/engineering"],
+)
+```
+
+The keyword arguments work in the same way as the Datasette plugin settings documented above.
