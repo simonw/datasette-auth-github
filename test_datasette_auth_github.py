@@ -1,8 +1,8 @@
 import json
-
-import pytest
 import time
 from http.cookies import SimpleCookie
+
+import pytest
 from asgiref.testing import ApplicationCommunicator
 from http3 import AsyncClient, AsyncDispatcher, AsyncResponse, codes
 

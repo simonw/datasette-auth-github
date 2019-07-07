@@ -5,7 +5,7 @@ from urllib.parse import parse_qsl
 
 import http3
 
-from .utils import send_html, Signer, BadSignature, force_list
+from .utils import BadSignature, Signer, force_list, send_html
 
 LOGIN_CSS = """
 <style>
