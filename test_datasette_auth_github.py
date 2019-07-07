@@ -6,7 +6,8 @@ from http.cookies import SimpleCookie
 from asgiref.testing import ApplicationCommunicator
 from http3 import AsyncClient, AsyncDispatcher, AsyncResponse, codes
 
-from datasette_auth_github import GitHubAuth, Signer
+from datasette_auth_github import GitHubAuth
+from datasette_auth_github.utils import Signer
 
 TEST_COOKIE_SECRET = "secret"
 
