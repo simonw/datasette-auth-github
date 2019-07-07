@@ -87,6 +87,8 @@ class GitHubAuth:
         output_cookies = SimpleCookie()
         output_cookies[self.cookie_name] = ""
         output_cookies[self.cookie_name]["path"] = "/"
+        output_cookies[self.cookie_name]["max-age"] = 0
+        output_cookies[self.cookie_name]["expires"] = 0
         headers.append(["set-cookie", output_cookies.output(header="").lstrip()])
         output_cookies = SimpleCookie()
         output_cookies[self.logout_cookie_name] = "stay-logged-out"
@@ -237,18 +239,18 @@ class GitHubAuth:
         signed_cookie = signer.sign(
             json.dumps(dict(auth, ts=int(time.time())), separators=(",", ":"))
         )
-        output_cookies = SimpleCookie()
-        output_cookies[self.cookie_name] = signed_cookie
-        output_cookies[self.cookie_name]["path"] = "/"
-        await send_html(
-            send,
-            "",
-            302,
-            [
-                ["location", "/"],
-                ["set-cookie", output_cookies.output(header="").lstrip()],
-            ],
-        )
+        headers = [["location", "/"]]
+        login_cookie = SimpleCookie()
+        login_cookie[self.cookie_name] = signed_cookie
+        login_cookie[self.cookie_name]["path"] = "/"
+        headers.append(["set-cookie", login_cookie.output(header="").lstrip()])
+        asgi_logout_cookie = SimpleCookie()
+        asgi_logout_cookie[self.logout_cookie_name] = ""
+        asgi_logout_cookie[self.logout_cookie_name]["path"] = "/"
+        asgi_logout_cookie[self.logout_cookie_name]["max-age"] = 0
+        asgi_logout_cookie[self.logout_cookie_name]["expires"] = 0
+        headers.append(["set-cookie", asgi_logout_cookie.output(header="").lstrip()])
+        await send_html(send, "", 302, headers)
 
     async def require_auth(self, scope, receive, send):
         github_login_url = "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(

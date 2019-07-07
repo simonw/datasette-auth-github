@@ -43,7 +43,7 @@ async def test_wrapped_app_redirects_to_github(wrapped_app):
 
 
 @pytest.mark.asyncio
-async def test_oauth_callback_call_apis_and_sets_cookie(wrapped_app):
+async def test_auth_callback_calls_github_apis_and_sets_cookie(wrapped_app):
     wrapped_app.github_api_client_factory = lambda: AsyncClient(
         dispatch=MockGithubApiDispatch()
     )
@@ -71,15 +71,19 @@ def assert_redirects_and_sets_cookie(app, output):
     assert (b"content-type", b"text/html") in headers
     assert (b"cache-control", b"private") in headers
     # ... and confirm the cookie was set
-    cookie_value = [value for key, value in headers if key == b"set-cookie"][0]
+    cookie_values = [value for key, value in headers if key == b"set-cookie"]
     signer = Signer(app.cookie_secret)
     simple_cookie = SimpleCookie()
-    simple_cookie.load(cookie_value.decode("utf8"))
+    for cookie_value in cookie_values:
+        simple_cookie.load(cookie_value.decode("utf8"))
     cookie_dict = {key: morsel.value for key, morsel in simple_cookie.items()}
     decoded = json.loads(signer.unsign(cookie_dict["asgi_auth"]))
     assert "123" == decoded["id"]
     assert "demouser" == decoded["username"]
     assert isinstance(decoded["ts"], int)
+    # Should also clear asgi_auth_logout cookie
+    assert "" == cookie_dict["asgi_auth_logout"]
+    assert "0" == simple_cookie["asgi_auth_logout"]["max-age"]
 
 
 @pytest.mark.asyncio
@@ -207,17 +211,24 @@ async def test_logout(wrapped_app):
     )
     await instance.send_input({"type": "http.request"})
     output = await instance.receive_output(1)
-    assert {
-        "type": "http.response.start",
-        "status": 302,
-        "headers": [
-            [b"location", b"/"],
-            [b"set-cookie", b'asgi_auth=""; Path=/'],
-            [b"set-cookie", b"asgi_auth_logout=stay-logged-out; Path=/"],
-            [b"content-type", b"text/html"],
-            [b"cache-control", b"private"],
-        ],
-    } == output
+    assert {"type": "http.response.start", "status": 302} == {
+        "type": output["type"],
+        "status": output["status"],
+    }
+    headers = tuple([tuple(pair) for pair in output["headers"]])
+    assert (b"location", b"/") in headers
+    assert (b"set-cookie", b"asgi_auth_logout=stay-logged-out; Path=/") in headers
+    assert (b"content-type", b"text/html") in headers
+    assert (b"cache-control", b"private") in headers
+    # asgi_auth should have been set with max-age and expiry
+    asgi_auth_cookie = [
+        p[1]
+        for p in headers
+        if p[0] == b"set-cookie" and p[1].startswith(b"asgi_auth=")
+    ][0]
+    assert b"Max-Age=0" in asgi_auth_cookie
+    assert b"Path=/" in asgi_auth_cookie
+    assert b"expires=" in asgi_auth_cookie
 
 
 async def assert_returns_logged_out_screen(instance):
