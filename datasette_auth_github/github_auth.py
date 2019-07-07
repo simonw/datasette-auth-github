@@ -5,7 +5,7 @@ from urllib.parse import parse_qsl
 
 import http3
 
-from .utils import BadSignature, Signer, force_list, send_html
+from .utils import BadSignature, Signer, force_list, send_html, cookies_from_scope
 
 LOGIN_CSS = """
 <style>
@@ -102,16 +102,8 @@ class GitHubAuth:
 
         return wrapped_send
 
-    def cookies_from_scope(self, scope):
-        cookie = dict(scope.get("headers") or {}).get(b"cookie")
-        if not cookie:
-            return {}
-        simple_cookie = SimpleCookie()
-        simple_cookie.load(cookie.decode("utf8"))
-        return {key: morsel.value for key, morsel in simple_cookie.items()}
-
     def auth_from_scope(self, scope):
-        auth_cookie = self.cookies_from_scope(scope).get(self.cookie_name)
+        auth_cookie = cookies_from_scope(scope).get(self.cookie_name)
         if not auth_cookie:
             return None
         # Decode the signed cookie
@@ -250,7 +242,7 @@ class GitHubAuth:
         github_login_url = "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(
             self.oauth_scope(), self.client_id
         )
-        if self.disable_auto_login or self.cookies_from_scope(scope).get(
+        if self.disable_auto_login or cookies_from_scope(scope).get(
             self.logout_cookie_name
         ):
             await send_html(

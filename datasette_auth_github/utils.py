@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+from http.cookies import SimpleCookie
 
 SALT = "datasette-auth-github"
 
@@ -66,3 +67,12 @@ def salted_hmac(salt, value, secret):
     secret = ensure_bytes(secret)
     key = hashlib.sha1(salt + secret).digest()
     return hmac.new(key, msg=ensure_bytes(value), digestmod=hashlib.sha1)
+
+
+def cookies_from_scope(scope):
+    cookie = dict(scope.get("headers") or {}).get(b"cookie")
+    if not cookie:
+        return {}
+    simple_cookie = SimpleCookie()
+    simple_cookie.load(cookie.decode("utf8"))
+    return {key: morsel.value for key, morsel in simple_cookie.items()}
