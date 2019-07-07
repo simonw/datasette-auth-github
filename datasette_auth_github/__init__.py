@@ -164,6 +164,7 @@ class GitHubAuth(AsgiAuth):
         disable_auto_login=False,
         allow_users=None,
         allow_orgs=None,
+        allow_teams=None,
     ):
         self.app = app
         self.cookie_secret = cookie_secret
@@ -172,8 +173,12 @@ class GitHubAuth(AsgiAuth):
         self.disable_auto_login = disable_auto_login
         self.allow_users = allow_users
         self.allow_orgs = allow_orgs
+        self.allow_teams = allow_teams
+        self.team_to_team_id = {}
 
     def oauth_scope(self):
+        if self.allow_teams is not None:
+            return "read:org"
         if self.allow_orgs is None:
             return "user:email"
         else:
@@ -181,27 +186,49 @@ class GitHubAuth(AsgiAuth):
 
     async def user_is_allowed(self, auth, access_token):
         # If no permissions set at all, user is allowed
-        if self.allow_users is None and self.allow_orgs is None:
+        if (
+            self.allow_users is None
+            and self.allow_orgs is None
+            and self.allow_teams is None
+        ):
             return True
         if self.allow_users is not None:
-            allow_users = self.allow_users
-            if isinstance(allow_users, str):
-                allow_users = [allow_users]
             # Check if the user is in that list
-            if auth["username"] in allow_users:
+            if auth["username"] in force_list(self.allow_users):
                 return True
         if self.allow_orgs is not None:
-            allow_orgs = self.allow_orgs
-            if isinstance(allow_orgs, str):
-                allow_orgs = [allow_orgs]
             # For each org, check if user is a member
-            for org in allow_orgs:
+            for org in force_list(self.allow_orgs):
                 url = "https://api.github.com/orgs/{}/memberships/{}?access_token={}".format(
                     org, auth["username"], access_token
                 )
                 response = await self.github_api_client.get(url)
-                if response.status_code == 200:
+                if response.status_code == 200 and response.json()["state"] == "active":
                     return True
+        if self.allow_teams is not None:
+            for team in force_list(self.allow_teams):
+                if team not in self.team_to_team_id:
+                    # Look up the team_id using the GitHub API
+                    org_slug, _, team_slug = team.partition("/")
+                    lookup_url = "https://api.github.com/orgs/{}/teams/{}?access_token={}".format(
+                        org_slug, team_slug, access_token
+                    )
+                    response = await self.github_api_client.get(lookup_url)
+                    if response.status_code == 200:
+                        self.team_to_team_id[team] = response.json()["id"]
+                    else:
+                        return False
+                team_id = self.team_to_team_id[team]
+                # Check if the user is a member of this team
+                team_membership_url = (
+                    url
+                ) = "https://api.github.com/teams/{}/memberships/{}?access_token={}".format(
+                    team_id, auth["username"], access_token
+                )
+                response = await self.github_api_client.get(url)
+                if response.status_code == 200 and response.json()["state"] == "active":
+                    return True
+
         return False
 
     async def require_auth(self, scope, receive, send):
@@ -223,6 +250,7 @@ class GitHubAuth(AsgiAuth):
                 )
             ).text
             parsed = dict(parse_qsl(github_response))
+            print(parsed)
             # b'error=bad_verification_code&error_description=The+code+passed...'
             if parsed.get("error"):
                 await send_html(
@@ -294,6 +322,12 @@ class GitHubAuth(AsgiAuth):
                 await send_html(send, "", 302, [["location", github_login_url]])
 
 
+def force_list(value):
+    if isinstance(value, str):
+        return [value]
+    return value
+
+
 @hookimpl
 def asgi_wrapper(datasette):
     config = datasette.plugin_config("datasette-auth-github") or {}
@@ -302,6 +336,7 @@ def asgi_wrapper(datasette):
     disable_auto_login = bool(config.get("disable_auto_login"))
     allow_users = config.get("allow_users")
     allow_orgs = config.get("allow_orgs")
+    allow_teams = config.get("allow_teams")
 
     def wrap_with_asgi_auth(app):
         if not (client_id and client_secret):
@@ -316,6 +351,7 @@ def asgi_wrapper(datasette):
             disable_auto_login=disable_auto_login,
             allow_users=allow_users,
             allow_orgs=allow_orgs,
+            allow_teams=allow_teams,
         )
 
     return wrap_with_asgi_auth
