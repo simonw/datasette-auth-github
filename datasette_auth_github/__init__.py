@@ -276,9 +276,7 @@ class GitHubAuth(AsgiAuth):
             await send_html(
                 send,
                 "{}<h1>GitHub authentication error</h1><p>{}</p><p>{}</p>".format(
-                    LOGIN_CSS,
-                    parsed["error"],
-                    parsed.get("error_description") or "",
+                    LOGIN_CSS, parsed["error"], parsed.get("error_description") or ""
                 ),
             )
             return
@@ -287,9 +285,7 @@ class GitHubAuth(AsgiAuth):
             await send_html(send, "No valid access token")
             return
         # Use access_token to verify user
-        profile_url = "https://api.github.com/user?access_token={}".format(
-            access_token
-        )
+        profile_url = "https://api.github.com/user?access_token={}".format(access_token)
         try:
             profile = (await self.github_api_client.get(profile_url)).json()
         except ValueError:
@@ -304,9 +300,7 @@ class GitHubAuth(AsgiAuth):
         # Are they allowed?
         if not (await self.user_is_allowed(auth, access_token)):
             await send_html(
-                send,
-                """{}<h1>Access forbidden</h1>""".format(LOGIN_CSS),
-                status=403,
+                send, """{}<h1>Access forbidden</h1>""".format(LOGIN_CSS), status=403
             )
             return
 
