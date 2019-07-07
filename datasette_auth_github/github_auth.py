@@ -16,39 +16,73 @@ body {
 """
 
 
-class AsgiAuth:
+class GitHubAuth:
     cookie_name = "asgi_auth"
-    logout_path = "/-/logout"
     logout_cookie_name = "asgi_auth_logout"
-    cookie_ttl = None
+    callback_path = "/-/auth-callback"
+    logout_path = "/-/logout"
+    # Tests can over-ride github_api_client here:
+    github_api_client = http3.AsyncClient()
 
-    def __init__(self, app, cookie_secret, cookie_ttl=None):
+    def __init__(
+        self,
+        app,
+        cookie_secret,
+        client_id,
+        client_secret,
+        cookie_ttl=24 * 60 * 60,
+        disable_auto_login=False,
+        allow_users=None,
+        allow_orgs=None,
+        allow_teams=None,
+    ):
         self.app = app
         self.cookie_secret = cookie_secret
+        self.client_id = client_id
+        self.client_secret = client_secret
         self.cookie_ttl = cookie_ttl
+        self.disable_auto_login = disable_auto_login
+        self.allow_users = allow_users
+        self.allow_orgs = allow_orgs
+        self.allow_teams = allow_teams
+        self.team_to_team_id = {}
+
+    def oauth_scope(self):
+        if self.allow_teams is not None:
+            return "read:org"
+        if self.allow_orgs is None:
+            return "user:email"
+        else:
+            return "user"
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http":
-            await self.app(scope, receive, send)
-            return
+            return await self.app(scope, receive, send)
         send = self.wrapped_send(send)
+
         if scope.get("path") == self.logout_path:
-            headers = [["location", "/"]]
-            output_cookies = SimpleCookie()
-            output_cookies[self.cookie_name] = ""
-            output_cookies[self.cookie_name]["path"] = "/"
-            headers.append(["set-cookie", output_cookies.output(header="").lstrip()])
-            output_cookies = SimpleCookie()
-            output_cookies[self.logout_cookie_name] = "stay-logged-out"
-            output_cookies[self.logout_cookie_name]["path"] = "/"
-            headers.append(["set-cookie", output_cookies.output(header="").lstrip()])
-            await send_html(send, "", 302, headers)
-            return
+            return await self.logout(scope, receive, send)
+
+        if scope.get("path") == self.callback_path:
+            return await self.auth_callback(scope, receive, send)
+
         auth = self.auth_from_scope(scope)
         if auth:
             await self.app(dict(scope, auth=auth), receive, send)
         else:
             await self.require_auth(scope, receive, send)
+
+    async def logout(self, scope, receive, send):
+        headers = [["location", "/"]]
+        output_cookies = SimpleCookie()
+        output_cookies[self.cookie_name] = ""
+        output_cookies[self.cookie_name]["path"] = "/"
+        headers.append(["set-cookie", output_cookies.output(header="").lstrip()])
+        output_cookies = SimpleCookie()
+        output_cookies[self.logout_cookie_name] = "stay-logged-out"
+        output_cookies[self.logout_cookie_name]["path"] = "/"
+        headers.append(["set-cookie", output_cookies.output(header="").lstrip()])
+        await send_html(send, "", 302, headers)
 
     def wrapped_send(self, send):
         async def wrapped_send(event):
@@ -97,53 +131,6 @@ class AsgiAuth:
 
     async def require_auth(self, scope, receive, send):
         await send_html(send, "<h1>Authentication required</h1>")
-
-
-class GitHubAuth(AsgiAuth):
-    callback_path = "/-/auth-callback"
-    # Tests can over-ride api_client here:
-    github_api_client = http3.AsyncClient()
-
-    def __init__(
-        self,
-        app,
-        cookie_secret,
-        client_id,
-        client_secret,
-        cookie_ttl=24 * 60 * 60,
-        disable_auto_login=False,
-        allow_users=None,
-        allow_orgs=None,
-        allow_teams=None,
-    ):
-        self.app = app
-        self.cookie_secret = cookie_secret
-        self.client_id = client_id
-        self.client_secret = client_secret
-        self.cookie_ttl = cookie_ttl
-        self.disable_auto_login = disable_auto_login
-        self.allow_users = allow_users
-        self.allow_orgs = allow_orgs
-        self.allow_teams = allow_teams
-        self.team_to_team_id = {}
-
-    def oauth_scope(self):
-        if self.allow_teams is not None:
-            return "read:org"
-        if self.allow_orgs is None:
-            return "user:email"
-        else:
-            return "user"
-
-    async def __call__(self, scope, receive, send):
-        if scope.get("type") != "http":
-            await self.app(scope, receive, send)
-            return
-        send = self.wrapped_send(send)
-        if scope.get("path") == self.callback_path:
-            return await self.auth_callback(scope, receive, send)
-        else:
-            return await super().__call__(scope, receive, send)
 
     async def user_is_allowed(self, auth, access_token):
         # If no permissions set at all, user is allowed
