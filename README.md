@@ -66,7 +66,7 @@ By default the plugin will allow any GitHub user to log in. You can restrict all
 ```
 You can list one or more GitHub usernames here.
 
-## Restricting access to specific GitHub organizations
+## Restricting access to specific GitHub organizations or teams
 
 You can also restrict access to users who are members of a specific GitHub organization:
 
@@ -82,7 +82,23 @@ You can also restrict access to users who are members of a specific GitHub organ
 }
 ```
 
-`allow_orgs` and `allow_users` can both be single strings rather than lists. This means you can publish a new datasette and configure the plugin entirely from the command-line like so:
+If your organization is [arranged into teams](https://help.github.com/en/articles/organizing-members-into-teams) you can restrict access to a specific team like this:
+
+```json
+{
+    "plugins": {
+        "datasette-auth-github": {
+            "client_id": "...",
+            "client_secret": "...",
+            "allow_teams": ["your-organization/engineering"]
+        }
+    }
+}
+```
+
+## Using this with the 'datasette publish' command
+
+`allow_orgs`, `allow_users` and `allow_teams` can both be single strings rather than lists. This means you can publish a new datasette and configure the plugin entirely from the command-line like so:
 
     $ datasette publish nowv1 fixtures.db \
         --alias datasette-auth-demo \

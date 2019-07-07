@@ -212,8 +212,16 @@ async def test_stay_logged_out_is_respected(wrapped_app):
         ["allow_users", "demouser", True],
         ["allow_orgs", ["my-org"], False],
         ["allow_orgs", ["demouser-org"], True],
+        ["allow_orgs", ["pending-org"], False],
         ["allow_orgs", "my-org", False],
         ["allow_orgs", "demouser-org", True],
+        ["allow_orgs", "pending-org", False],
+        ["allow_teams", ["my-org/hello"], False],
+        ["allow_teams", ["demouser-org/thetopteam"], True],
+        ["allow_teams", ["demouser-org/pendingteam"], False],
+        ["allow_teams", "my-org/hello", False],
+        ["allow_teams", "demouser-org/thetopteam", True],
+        ["allow_teams", "demouser-org/pendingteam", False],
     ],
 )
 async def test_allow_rules(attr, attr_value, should_allow, wrapped_app):
@@ -279,7 +287,11 @@ async def test_allow_orgs(wrapped_app):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "config,expected_scope",
-    [[{"allow_orgs": ["foo"]}, "user"], [{"allow_users": ["foo"]}, "user:email"]],
+    [
+        [{"allow_orgs": ["foo"]}, "user"],
+        [{"allow_users": ["foo"]}, "user:email"],
+        [{"allow_teams": ["foo/blah"]}, "read:org"],
+    ],
 )
 async def test_oauth_scope(config, expected_scope, wrapped_app):
     for key, value in config.items():
@@ -337,7 +349,54 @@ class MockGithubApiDispatch(AsyncDispatcher):
         ):
             # It's an organization membership check
             org = request.url.path.split("/orgs/")[1].split("/")[0]
-            if org == "demouser-org":
+            if org in ("demouser-org", "pending-org"):
+                member_state = {"demouser-org": "active", "pending-org": "pending"}[org]
+                return AsyncResponse(
+                    codes.OK,
+                    content=json.dumps(
+                        {"state": member_state, "role": "member"}
+                    ).encode("utf8"),
+                    request=request,
+                )
+            else:
+                return AsyncResponse(
+                    codes.FORBIDDEN,
+                    content=json.dumps({"message": "Not a member"}).encode("utf8"),
+                    request=request,
+                )
+        elif request.url.path.startswith("/orgs/") and "/teams/" in request.url.path:
+            # /orgs/eventbrite/teams/engineering team ID lookup
+            team_slug = request.url.path.split("/")[-1]
+            if team_slug in ("thetopteam", "pendingteam"):
+                team_info = {
+                    "thetopteam": {
+                        "id": 54321,
+                        "name": "The Top Team",
+                        "slug": "thetopteam",
+                    },
+                    "pendingteam": {
+                        "id": 59999,
+                        "name": "Pending Team",
+                        "slug": "pendingteam",
+                    },
+                }[team_slug]
+                return AsyncResponse(
+                    codes.OK,
+                    content=json.dumps(team_info).encode("utf-8"),
+                    request=request,
+                )
+            else:
+                return AsyncResponse(
+                    codes.NOT_FOUND,
+                    content=json.dumps({"message": "Not found"}).encode("utf8"),
+                    request=request,
+                )
+        elif (
+            request.url.path.startswith("/teams/")
+            and "/memberships/" in request.url.path
+        ):
+            # Team membership check
+            if "54321" in request.url.path:
                 return AsyncResponse(
                     codes.OK,
                     content=json.dumps({"state": "active", "role": "member"}).encode(
@@ -345,10 +404,19 @@ class MockGithubApiDispatch(AsyncDispatcher):
                     ),
                     request=request,
                 )
+            elif "59999" in request.url.path:
+                # User is pending in this team
+                return AsyncResponse(
+                    codes.OK,
+                    content=json.dumps({"state": "pending", "role": "member"}).encode(
+                        "utf8"
+                    ),
+                    request=request,
+                )
             else:
                 return AsyncResponse(
-                    codes.FORBIDDEN,
-                    content=json.dumps({"message": "Not a member"}).encode("utf8"),
+                    codes.NOT_FOUND,
+                    content=json.dumps({"message": "Not found"}).encode("utf8"),
                     request=request,
                 )
         elif (
