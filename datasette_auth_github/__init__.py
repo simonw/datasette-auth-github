@@ -250,7 +250,6 @@ class GitHubAuth(AsgiAuth):
                 )
             ).text
             parsed = dict(parse_qsl(github_response))
-            print(parsed)
             # b'error=bad_verification_code&error_description=The+code+passed...'
             if parsed.get("error"):
                 await send_html(
