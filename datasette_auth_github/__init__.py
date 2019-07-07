@@ -149,11 +149,11 @@ class AsgiAuth:
             return None
         decoded = json.loads(cookie_value)
         # Has the cookie expired?
-        if (
-            self.cookie_ttl is not None
-            and (int(time.time()) - self.cookie_ttl) > decoded["ts"]
-        ):
-            return None
+        if self.cookie_ttl is not None:
+            if "ts" not in decoded:
+                return None
+            if (int(time.time()) - self.cookie_ttl) > decoded["ts"]:
+                return None
         return decoded
 
     async def require_auth(self, scope, receive, send):
@@ -195,6 +195,16 @@ class GitHubAuth(AsgiAuth):
             return "user:email"
         else:
             return "user"
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+        send = self.wrapped_send(send)
+        if scope.get("path") == self.callback_path:
+            return await self.auth_callback(scope, receive, send)
+        else:
+            return await super().__call__(scope, receive, send)
 
     async def user_is_allowed(self, auth, access_token):
         # If no permissions set at all, user is allowed
@@ -243,96 +253,96 @@ class GitHubAuth(AsgiAuth):
 
         return False
 
-    async def require_auth(self, scope, receive, send):
-        if scope.get("path") == self.callback_path:
-            # Look for ?code=
-            qs = dict(parse_qsl(scope["query_string"].decode("utf8")))
-            if not qs.get("code"):
-                await send_html(send, "Authentication failed, no code")
-                return
-            # Exchange that code for a token
-            github_response = (
-                await self.github_api_client.post(
-                    "https://github.com/login/oauth/access_token",
-                    data={
-                        "client_id": self.client_id,
-                        "client_secret": self.client_secret,
-                        "code": qs["code"],
-                    },
-                )
-            ).text
-            parsed = dict(parse_qsl(github_response))
-            # b'error=bad_verification_code&error_description=The+code+passed...'
-            if parsed.get("error"):
-                await send_html(
-                    send,
-                    "{}<h1>GitHub authentication error</h1><p>{}</p><p>{}</p>".format(
-                        LOGIN_CSS,
-                        parsed["error"],
-                        parsed.get("error_description") or "",
-                    ),
-                )
-                return
-            access_token = parsed.get("access_token")
-            if not access_token:
-                await send_html(send, "No valid access token")
-                return
-            # Use access_token to verify user
-            profile_url = "https://api.github.com/user?access_token={}".format(
-                access_token
+    async def auth_callback(self, scope, receive, send):
+        # Look for ?code=
+        qs = dict(parse_qsl(scope["query_string"].decode("utf8")))
+        if not qs.get("code"):
+            await send_html(send, "Authentication failed, no code")
+            return
+        # Exchange that code for a token
+        github_response = (
+            await self.github_api_client.post(
+                "https://github.com/login/oauth/access_token",
+                data={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "code": qs["code"],
+                },
             )
-            try:
-                profile = (await self.github_api_client.get(profile_url)).json()
-            except ValueError:
-                await send_html(send, "Could not load GitHub profile")
-                return
-            auth = {
-                "id": str(profile["id"]),
-                "name": profile["name"],
-                "username": profile["login"],
-                "email": profile["email"],
-            }
-            # Are they allowed?
-            if not (await self.user_is_allowed(auth, access_token)):
-                await send_html(
-                    send,
-                    """{}<h1>Access forbidden</h1>""".format(LOGIN_CSS),
-                    status=403,
-                )
-                return
-
-            # Set a signed cookie and redirect to homepage
-            signer = Signer(self.cookie_secret)
-            signed_cookie = signer.sign(
-                json.dumps(dict(auth, ts=int(time.time())), separators=(",", ":"))
-            )
-            output_cookies = SimpleCookie()
-            output_cookies[self.cookie_name] = signed_cookie
-            output_cookies[self.cookie_name]["path"] = "/"
+        ).text
+        parsed = dict(parse_qsl(github_response))
+        # b'error=bad_verification_code&error_description=The+code+passed...'
+        if parsed.get("error"):
             await send_html(
                 send,
-                "",
-                302,
-                [
-                    ["location", "/"],
-                    ["set-cookie", output_cookies.output(header="").lstrip()],
-                ],
+                "{}<h1>GitHub authentication error</h1><p>{}</p><p>{}</p>".format(
+                    LOGIN_CSS,
+                    parsed["error"],
+                    parsed.get("error_description") or "",
+                ),
+            )
+            return
+        access_token = parsed.get("access_token")
+        if not access_token:
+            await send_html(send, "No valid access token")
+            return
+        # Use access_token to verify user
+        profile_url = "https://api.github.com/user?access_token={}".format(
+            access_token
+        )
+        try:
+            profile = (await self.github_api_client.get(profile_url)).json()
+        except ValueError:
+            await send_html(send, "Could not load GitHub profile")
+            return
+        auth = {
+            "id": str(profile["id"]),
+            "name": profile["name"],
+            "username": profile["login"],
+            "email": profile["email"],
+        }
+        # Are they allowed?
+        if not (await self.user_is_allowed(auth, access_token)):
+            await send_html(
+                send,
+                """{}<h1>Access forbidden</h1>""".format(LOGIN_CSS),
+                status=403,
+            )
+            return
+
+        # Set a signed cookie and redirect to homepage
+        signer = Signer(self.cookie_secret)
+        signed_cookie = signer.sign(
+            json.dumps(dict(auth, ts=int(time.time())), separators=(",", ":"))
+        )
+        output_cookies = SimpleCookie()
+        output_cookies[self.cookie_name] = signed_cookie
+        output_cookies[self.cookie_name]["path"] = "/"
+        await send_html(
+            send,
+            "",
+            302,
+            [
+                ["location", "/"],
+                ["set-cookie", output_cookies.output(header="").lstrip()],
+            ],
+        )
+
+    async def require_auth(self, scope, receive, send):
+        github_login_url = "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(
+            self.oauth_scope(), self.client_id
+        )
+        if self.disable_auto_login or self.cookies_from_scope(scope).get(
+            self.logout_cookie_name
+        ):
+            await send_html(
+                send,
+                """{}<h1>Logged out</h1><p><a href="{}">Log in with GitHub</a></p>""".format(
+                    LOGIN_CSS, github_login_url
+                ),
             )
         else:
-            github_login_url = "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(
-                self.oauth_scope(), self.client_id
-            )
-            if self.disable_auto_login or self.cookies_from_scope(scope).get(
-                self.logout_cookie_name
-            ):
-                await send_html(
-                    send,
-                    """{}<h1>Logged out</h1><p><a href="{}">Log in with GitHub</a></p>""".format(
-                        LOGIN_CSS, github_login_url
-                    ),
-                )
-            else:
-                await send_html(send, "", 302, [["location", github_login_url]])
+            await send_html(send, "", 302, [["location", github_login_url]])
 
 
 def force_list(value):
