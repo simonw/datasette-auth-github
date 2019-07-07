@@ -106,3 +106,21 @@ If your organization is [arranged into teams](https://help.github.com/en/article
         --plugin-secret datasette-auth-github client_id 86e397f7fd7a54d26a3a \
         --plugin-secret datasette-auth-github client_secret ... \
         --plugin-secret datasette-auth-github allow_user simonw
+
+## Cookie expiration
+
+The cookies set by this plugin default to expiring after 24 hours. Users with expired cookies will be automatically redirected back through GitHub to login, so they are unlikely to notice that their cookies have expired.
+
+You can change the cookie expiration policy in seconds using the `cookie_ttl` setting. Here's how to reduce that timeout to an hour:
+
+```json
+{
+    "plugins": {
+        "datasette-auth-github": {
+            "client_id": "...",
+            "client_secret": "...",
+            "cookie_ttl": 3600
+        }
+    }
+}
+```

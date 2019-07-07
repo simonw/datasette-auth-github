@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import time
 from http.cookies import SimpleCookie
 from urllib.parse import parse_qsl
 
@@ -80,10 +81,12 @@ class AsgiAuth:
     cookie_name = "asgi_auth"
     logout_path = "/-/logout"
     logout_cookie_name = "asgi_auth_logout"
+    cookie_ttl = None
 
-    def __init__(self, app, cookie_secret):
+    def __init__(self, app, cookie_secret, cookie_ttl=None):
         self.app = app
         self.cookie_secret = cookie_secret
+        self.cookie_ttl = cookie_ttl
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http":
@@ -144,7 +147,14 @@ class AsgiAuth:
             cookie_value = signer.unsign(auth_cookie)
         except BadSignature:
             return None
-        return json.loads(cookie_value)
+        decoded = json.loads(cookie_value)
+        # Has the cookie expired?
+        if (
+            self.cookie_ttl is not None
+            and (int(time.time()) - self.cookie_ttl) > decoded["ts"]
+        ):
+            return None
+        return decoded
 
     async def require_auth(self, scope, receive, send):
         await send_html(send, "<h1>Authentication required</h1>")
@@ -161,6 +171,7 @@ class GitHubAuth(AsgiAuth):
         cookie_secret,
         client_id,
         client_secret,
+        cookie_ttl=24 * 60 * 60,
         disable_auto_login=False,
         allow_users=None,
         allow_orgs=None,
@@ -170,6 +181,7 @@ class GitHubAuth(AsgiAuth):
         self.cookie_secret = cookie_secret
         self.client_id = client_id
         self.client_secret = client_secret
+        self.cookie_ttl = cookie_ttl
         self.disable_auto_login = disable_auto_login
         self.allow_users = allow_users
         self.allow_orgs = allow_orgs
@@ -291,7 +303,9 @@ class GitHubAuth(AsgiAuth):
 
             # Set a signed cookie and redirect to homepage
             signer = Signer(self.cookie_secret)
-            signed_cookie = signer.sign(json.dumps(auth, separators=(",", ":")))
+            signed_cookie = signer.sign(
+                json.dumps(dict(auth, ts=int(time.time())), separators=(",", ":"))
+            )
             output_cookies = SimpleCookie()
             output_cookies[self.cookie_name] = signed_cookie
             output_cookies[self.cookie_name]["path"] = "/"
@@ -336,6 +350,7 @@ def asgi_wrapper(datasette):
     allow_users = config.get("allow_users")
     allow_orgs = config.get("allow_orgs")
     allow_teams = config.get("allow_teams")
+    cookie_ttl = config.get("cookie_ttl") or 24 * 60 * 60
 
     def wrap_with_asgi_auth(app):
         if not (client_id and client_secret):
@@ -347,6 +362,7 @@ def asgi_wrapper(datasette):
             cookie_secret=cookie_secret,
             client_id=client_id,
             client_secret=client_secret,
+            cookie_ttl=cookie_ttl,
             disable_auto_login=disable_auto_login,
             allow_users=allow_users,
             allow_orgs=allow_orgs,

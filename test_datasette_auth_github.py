@@ -1,19 +1,21 @@
 import json
 
 import pytest
+import time
+from http.cookies import SimpleCookie
 from asgiref.testing import ApplicationCommunicator
 from http3 import AsyncClient, AsyncDispatcher, AsyncResponse, codes
 
-from datasette_auth_github import GitHubAuth
+from datasette_auth_github import GitHubAuth, Signer
 
-DEMO_USER_SIGNED_COOKIE = b'asgi_auth="{\\"id\\":\\"123\\"\\054\\"name\\":\\"GitHub User\\"\\054\\"username\\":\\"demouser\\"\\054\\"email\\":\\"demouser@example.com\\"}:-IODUh-3ctRVgrpTkRNEr-5s8Ys"; Path=/'
+TEST_COOKIE_SECRET = "secret"
 
 
 @pytest.fixture
 def wrapped_app():
     return GitHubAuth(
         hello_world_app,
-        cookie_secret="secret",
+        cookie_secret=TEST_COOKIE_SECRET,
         client_id="x_client_id",
         client_secret="x_client_secret",
     )
@@ -59,34 +61,42 @@ async def test_oauth_callback_call_apis_and_sets_cookie(wrapped_app):
     )
     await instance.send_input({"type": "http.request"})
     output = await instance.receive_output(1)
-    # Should set asgi_auth cookie
-    assert {
-        "type": "http.response.start",
-        "status": 302,
-        "headers": [
-            [b"location", b"/"],
-            [b"set-cookie", DEMO_USER_SIGNED_COOKIE],
-            [b"content-type", b"text/html"],
-            [b"cache-control", b"private"],
-        ],
-    } == output
+    assert_redirects_and_sets_cookie(output)
+
+
+def assert_redirects_and_sets_cookie(output):
+    assert "http.response.start" == output["type"]
+    assert 302 == output["status"]
+    # Convert headers into a tuple of tuples for x in y lookups
+    headers = tuple([tuple(pair) for pair in output["headers"]])
+    assert (b"location", b"/") in headers
+    assert (b"content-type", b"text/html") in headers
+    assert (b"cache-control", b"private") in headers
+    # ... and confirm the cookie was set
+    cookie_value = [value for key, value in headers if key == b"set-cookie"][0]
+    signer = Signer(TEST_COOKIE_SECRET)
+    simple_cookie = SimpleCookie()
+    simple_cookie.load(cookie_value.decode("utf8"))
+    cookie_dict = {key: morsel.value for key, morsel in simple_cookie.items()}
+    decoded = json.loads(signer.unsign(cookie_dict["asgi_auth"]))
+    assert "123" == decoded["id"]
+    assert "demouser" == decoded["username"]
+    assert isinstance(decoded["ts"], int)
 
 
 @pytest.mark.asyncio
 async def test_signed_cookie_allows_access(wrapped_app):
-    instance = ApplicationCommunicator(
-        wrapped_app,
-        {
-            "type": "http",
-            "http_version": "1.0",
-            "method": "GET",
-            "path": "/",
-            "headers": [
-                [b"cookie", DEMO_USER_SIGNED_COOKIE],
-                [b"cache-control", b"private"],
-            ],
-        },
-    )
+    scope = {
+        "type": "http",
+        "http_version": "1.0",
+        "method": "GET",
+        "path": "/",
+        "headers": [
+            [b"cookie", signed_auth_cookie_header()],
+            [b"cache-control", b"private"],
+        ],
+    }
+    instance = ApplicationCommunicator(wrapped_app, scope)
     await instance.send_input({"type": "http.request"})
     output = await instance.receive_output(1)
     assert {
@@ -98,7 +108,7 @@ async def test_signed_cookie_allows_access(wrapped_app):
 
 @pytest.mark.asyncio
 async def test_corrupt_cookie_signature_is_denied_access(wrapped_app):
-    cookie = DEMO_USER_SIGNED_COOKIE
+    cookie = signed_auth_cookie_header()
     # Corrupt the signature
     body, sig = cookie.rsplit(b":", 1)
     corrupt_cookie = body + b":" + b"x" + sig
@@ -110,6 +120,25 @@ async def test_corrupt_cookie_signature_is_denied_access(wrapped_app):
             "method": "GET",
             "path": "/",
             "headers": [[b"cookie", corrupt_cookie]],
+        },
+    )
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    assert 302 == output["status"]
+
+
+@pytest.mark.asyncio
+async def test_expired_cookie_is_denied_access(wrapped_app):
+    cookie = signed_auth_cookie_header(ts=time.time() - 36 * 60 * 60)
+    # Corrupt the signature
+    instance = ApplicationCommunicator(
+        wrapped_app,
+        {
+            "type": "http",
+            "http_version": "1.0",
+            "method": "GET",
+            "path": "/",
+            "headers": [[b"cookie", cookie]],
         },
     )
     await instance.send_input({"type": "http.request"})
@@ -239,16 +268,7 @@ async def test_allow_rules(attr, attr_value, should_allow, wrapped_app):
     output = await instance.receive_output(1)
     if should_allow:
         # Should redirect to homepage
-        assert {
-            "type": "http.response.start",
-            "status": 302,
-            "headers": [
-                [b"location", b"/"],
-                [b"set-cookie", DEMO_USER_SIGNED_COOKIE],
-                [b"content-type", b"text/html"],
-                [b"cache-control", b"private"],
-            ],
-        } == output
+        assert_redirects_and_sets_cookie(output)
     else:
         # Should return forbidden
         assert {"type": "http.response.start", "status": 403} == {
@@ -317,6 +337,25 @@ async def test_oauth_scope(config, expected_scope, wrapped_app):
             [b"cache-control", b"private"],
         ],
     }
+
+
+def signed_auth_cookie_header(ts=None):
+    signer = Signer(TEST_COOKIE_SECRET)
+    cookie = SimpleCookie()
+    cookie["asgi_auth"] = signer.sign(
+        json.dumps(
+            {
+                "id": "123",
+                "name": "GitHub User",
+                "username": "demouser",
+                "email": "demouser@example.com",
+                "ts": ts or int(time.time()),
+            },
+            separators=(",", ":"),
+        )
+    )
+    cookie["asgi_auth"]["path"] = "/"
+    return cookie.output(header="").lstrip().encode("utf8")
 
 
 async def hello_world_app(scope, receive, send):
