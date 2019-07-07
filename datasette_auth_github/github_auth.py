@@ -33,7 +33,6 @@ class GitHubAuth:
         client_id,
         client_secret,
         cookie_ttl=24 * 60 * 60,
-        cookie_secret=None,
         cookie_version=None,
         disable_auto_login=False,
         allow_users=None,
