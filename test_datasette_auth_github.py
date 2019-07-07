@@ -18,24 +18,27 @@ def wrapped_app():
 
 
 @pytest.mark.asyncio
-async def test_wrapped_app_redirects_to_github(wrapped_app):
+@pytest.mark.parametrize("path", ["/", "/fixtures", "/foo/bar"])
+async def test_redirects_to_github_with_asgi_auth_redirect_cookie(path, wrapped_app):
     instance = ApplicationCommunicator(
         wrapped_app,
-        {"type": "http", "http_version": "1.0", "method": "GET", "path": "/"},
+        {"type": "http", "http_version": "1.0", "method": "GET", "path": path},
     )
     await instance.send_input({"type": "http.request"})
-    assert (await instance.receive_output(1)) == {
-        "type": "http.response.start",
-        "status": 302,
-        "headers": [
-            [
-                b"location",
-                b"https://github.com/login/oauth/authorize?scope=user:email&client_id=x_client_id",
-            ],
-            [b"content-type", b"text/html"],
-            [b"cache-control", b"private"],
-        ],
-    }
+    output = await instance.receive_output(1)
+    assert "http.response.start" == output["type"]
+    assert 302 == output["status"]
+    headers = tuple([tuple(pair) for pair in output["headers"]])
+    assert (
+        b"location",
+        b"https://github.com/login/oauth/authorize?scope=user:email&client_id=x_client_id",
+    ) in headers
+    assert (b"cache-control", b"private") in headers
+    simple_cookie = SimpleCookie()
+    for key, value in headers:
+        if key == b"set-cookie":
+            simple_cookie.load(value.decode("utf8"))
+    assert path == simple_cookie["asgi_auth_redirect"].value
     assert (await instance.receive_output(1)) == {
         "type": "http.response.body",
         "body": b"",
@@ -43,10 +46,16 @@ async def test_wrapped_app_redirects_to_github(wrapped_app):
 
 
 @pytest.mark.asyncio
-async def test_auth_callback_calls_github_apis_and_sets_cookie(wrapped_app):
+@pytest.mark.parametrize("redirect_path", ["/", "/fixtures", "/foo/bar"])
+async def test_auth_callback_calls_github_apis_and_sets_cookie(
+    redirect_path, wrapped_app
+):
     wrapped_app.github_api_client_factory = lambda: AsyncClient(
         dispatch=MockGithubApiDispatch()
     )
+    cookie = SimpleCookie()
+    cookie["asgi_auth_redirect"] = redirect_path
+    cookie["asgi_auth_redirect"]["path"] = "/"
     instance = ApplicationCommunicator(
         wrapped_app,
         {
@@ -55,19 +64,20 @@ async def test_auth_callback_calls_github_apis_and_sets_cookie(wrapped_app):
             "method": "GET",
             "path": "/-/auth-callback",
             "query_string": b"code=github-code-here",
+            "headers": [[b"cookie", cookie.output(header="").lstrip().encode("utf8")]],
         },
     )
     await instance.send_input({"type": "http.request"})
     output = await instance.receive_output(1)
-    assert_redirects_and_sets_cookie(wrapped_app, output)
+    assert_redirects_and_sets_cookie(wrapped_app, output, redirect_path)
 
 
-def assert_redirects_and_sets_cookie(app, output):
+def assert_redirects_and_sets_cookie(app, output, redirect_to="/"):
     assert "http.response.start" == output["type"]
     assert 302 == output["status"]
     # Convert headers into a tuple of tuples for x in y lookups
     headers = tuple([tuple(pair) for pair in output["headers"]])
-    assert (b"location", b"/") in headers
+    assert (b"location", redirect_to.encode("utf8")) in headers
     assert (b"content-type", b"text/html") in headers
     assert (b"cache-control", b"private") in headers
     # ... and confirm the cookie was set
@@ -231,13 +241,18 @@ async def test_logout(wrapped_app):
     assert b"expires=" in asgi_auth_cookie
 
 
-async def assert_returns_logged_out_screen(instance):
+async def assert_returns_logged_out_screen(instance, path):
     output = await instance.receive_output(1)
-    assert {
-        "type": "http.response.start",
-        "status": 200,
-        "headers": [[b"content-type", b"text/html"], [b"cache-control", b"private"]],
-    } == output
+    assert 200 == output["status"]
+    assert "http.response.start" == output["type"]
+    headers = tuple([tuple(pair) for pair in output["headers"]])
+    assert (b"content-type", b"text/html") in headers
+    assert (b"cache-control", b"private") in headers
+    simple_cookie = SimpleCookie()
+    for key, value in headers:
+        if key == b"set-cookie":
+            simple_cookie.load(value.decode("utf8"))
+    assert path == simple_cookie["asgi_auth_redirect"].value
     output = await instance.receive_output(1)
     assert b"<h1>Logged out</h1>" in output["body"]
     assert b"https://github.com/login/oauth/authorize?scope" in output["body"]
@@ -251,7 +266,7 @@ async def test_disable_auto_login_respected(wrapped_app):
         {"type": "http", "http_version": "1.0", "method": "GET", "path": "/"},
     )
     await instance.send_input({"type": "http.request"})
-    await assert_returns_logged_out_screen(instance)
+    await assert_returns_logged_out_screen(instance, "/")
 
 
 @pytest.mark.asyncio
@@ -267,7 +282,7 @@ async def test_stay_logged_out_is_respected(wrapped_app):
         },
     )
     await instance.send_input({"type": "http.request"})
-    await assert_returns_logged_out_screen(instance)
+    await assert_returns_logged_out_screen(instance, ("/"))
 
 
 @pytest.mark.asyncio
@@ -364,22 +379,14 @@ async def test_oauth_scope(config, expected_scope, wrapped_app):
         {"type": "http", "http_version": "1.0", "method": "GET", "path": "/"},
     )
     await instance.send_input({"type": "http.request"})
-    assert (await instance.receive_output(1)) == {
-        "type": "http.response.start",
-        "status": 302,
-        "headers": [
-            [
-                b"location",
-                "https://github.com/login/oauth/authorize?scope={}&client_id=x_client_id".format(
-                    expected_scope
-                ).encode(
-                    "utf8"
-                ),
-            ],
-            [b"content-type", b"text/html"],
-            [b"cache-control", b"private"],
-        ],
-    }
+    output = await instance.receive_output(1)
+    expected_location = "https://github.com/login/oauth/authorize?scope={}&client_id=x_client_id".format(
+        expected_scope
+    ).encode(
+        "utf8"
+    )
+    location = dict(output["headers"]).get(b"location")
+    assert expected_location == location
 
 
 def signed_auth_cookie_header(app, ts=None):

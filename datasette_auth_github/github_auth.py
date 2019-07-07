@@ -20,8 +20,10 @@ body {
 class GitHubAuth:
     cookie_name = "asgi_auth"
     logout_cookie_name = "asgi_auth_logout"
+    redirect_cookie_name = "asgi_auth_redirect"
     callback_path = "/-/auth-callback"
     logout_path = "/-/logout"
+    redirect_path_blacklist = {"/favicon.ico"}
     # Tests can over-ride github_api_client_factory here:
     github_api_client_factory = http3.AsyncClient
 
@@ -239,7 +241,10 @@ class GitHubAuth:
         signed_cookie = signer.sign(
             json.dumps(dict(auth, ts=int(time.time())), separators=(",", ":"))
         )
-        headers = [["location", "/"]]
+
+        redirect_to = cookies_from_scope(scope).get("asgi_auth_redirect") or "/"
+
+        headers = [["location", redirect_to]]
         login_cookie = SimpleCookie()
         login_cookie[self.cookie_name] = signed_cookie
         login_cookie[self.cookie_name]["path"] = "/"
@@ -256,6 +261,15 @@ class GitHubAuth:
         github_login_url = "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(
             self.oauth_scope(), self.client_id
         )
+        # Set asgi_auth_redirect cookie
+        cookie_headers = []
+        if scope["path"] not in self.redirect_path_blacklist:
+            redirect_cookie = SimpleCookie()
+            redirect_cookie[self.redirect_cookie_name] = scope["path"]
+            redirect_cookie[self.redirect_cookie_name]["path"] = "/"
+            cookie_headers = [
+                ["set-cookie", redirect_cookie.output(header="").lstrip()]
+            ]
         if self.disable_auto_login or cookies_from_scope(scope).get(
             self.logout_cookie_name
         ):
@@ -264,6 +278,9 @@ class GitHubAuth:
                 """{}<h1>Logged out</h1><p><a href="{}">Log in with GitHub</a></p>""".format(
                     LOGIN_CSS, github_login_url
                 ),
+                headers=cookie_headers,
             )
         else:
-            await send_html(send, "", 302, [["location", github_login_url]])
+            await send_html(
+                send, "", 302, [["location", github_login_url]] + cookie_headers
+            )
