@@ -258,18 +258,19 @@ class GitHubAuth:
         await send_html(send, "", 302, headers)
 
     async def require_auth(self, scope, receive, send):
+        cookie_headers = []
+        if scope["path"] in self.redirect_path_blacklist:
+            return await send_html(
+                send, """{}<h1>Access forbidden</h1>""".format(LOGIN_CSS), status=403
+            )
+        # Set asgi_auth_redirect cookie
+        redirect_cookie = SimpleCookie()
+        redirect_cookie[self.redirect_cookie_name] = scope["path"]
+        redirect_cookie[self.redirect_cookie_name]["path"] = "/"
+        cookie_headers = [["set-cookie", redirect_cookie.output(header="").lstrip()]]
         github_login_url = "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(
             self.oauth_scope(), self.client_id
         )
-        # Set asgi_auth_redirect cookie
-        cookie_headers = []
-        if scope["path"] not in self.redirect_path_blacklist:
-            redirect_cookie = SimpleCookie()
-            redirect_cookie[self.redirect_cookie_name] = scope["path"]
-            redirect_cookie[self.redirect_cookie_name]["path"] = "/"
-            cookie_headers = [
-                ["set-cookie", redirect_cookie.output(header="").lstrip()]
-            ]
         if self.disable_auto_login or cookies_from_scope(scope).get(
             self.logout_cookie_name
         ):

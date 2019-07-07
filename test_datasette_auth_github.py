@@ -46,6 +46,23 @@ async def test_redirects_to_github_with_asgi_auth_redirect_cookie(path, wrapped_
 
 
 @pytest.mark.asyncio
+async def test_logged_out_favicon_forbidden(wrapped_app):
+    instance = ApplicationCommunicator(
+        wrapped_app,
+        {
+            "type": "http",
+            "http_version": "1.0",
+            "method": "GET",
+            "path": "/favicon.ico",
+        },
+    )
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    assert "http.response.start" == output["type"]
+    assert 403 == output["status"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("redirect_path", ["/", "/fixtures", "/foo/bar"])
 async def test_auth_callback_calls_github_apis_and_sets_cookie(
     redirect_path, wrapped_app
@@ -97,12 +114,13 @@ def assert_redirects_and_sets_cookie(app, output, redirect_to="/"):
 
 
 @pytest.mark.asyncio
-async def test_signed_cookie_allows_access(wrapped_app):
+@pytest.mark.parametrize("path", ["/", "/favicon.ico", "/fixtures"])
+async def test_signed_cookie_allows_access(path, wrapped_app):
     scope = {
         "type": "http",
         "http_version": "1.0",
         "method": "GET",
-        "path": "/",
+        "path": path,
         "headers": [
             [b"cookie", signed_auth_cookie_header(wrapped_app)],
             [b"cache-control", b"private"],
