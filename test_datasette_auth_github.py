@@ -44,7 +44,9 @@ async def test_wrapped_app_redirects_to_github(wrapped_app):
 
 @pytest.mark.asyncio
 async def test_oauth_callback_call_apis_and_sets_cookie(wrapped_app):
-    wrapped_app.github_api_client = AsyncClient(dispatch=MockGithubApiDispatch())
+    wrapped_app.github_api_client_factory = lambda: AsyncClient(
+        dispatch=MockGithubApiDispatch()
+    )
     instance = ApplicationCommunicator(
         wrapped_app,
         {
@@ -174,7 +176,7 @@ async def test_incrementing_cookie_version_denies_access():
 
 @pytest.mark.asyncio
 async def test_invalid_github_code_denied_access(wrapped_app):
-    wrapped_app.github_api_client = AsyncClient(
+    wrapped_app.github_api_client_factory = lambda: AsyncClient(
         dispatch=MockGithubApiDispatch(
             b"error=bad_verification_code&error_description=The+code+passed+is+incorrect"
         )
@@ -281,7 +283,9 @@ async def test_stay_logged_out_is_respected(wrapped_app):
 )
 async def test_allow_rules(attr, attr_value, should_allow, wrapped_app):
     setattr(wrapped_app, attr, attr_value)
-    wrapped_app.github_api_client = AsyncClient(dispatch=MockGithubApiDispatch())
+    wrapped_app.github_api_client_factory = lambda: AsyncClient(
+        dispatch=MockGithubApiDispatch()
+    )
     scope = {
         "type": "http",
         "http_version": "1.0",
@@ -306,7 +310,9 @@ async def test_allow_rules(attr, attr_value, should_allow, wrapped_app):
 @pytest.mark.asyncio
 async def test_allow_orgs(wrapped_app):
     wrapped_app.allow_orgs = ["my-org"]
-    wrapped_app.github_api_client = AsyncClient(dispatch=MockGithubApiDispatch())
+    wrapped_app.github_api_client_factory = lambda: AsyncClient(
+        dispatch=MockGithubApiDispatch()
+    )
     scope = {
         "type": "http",
         "http_version": "1.0",
