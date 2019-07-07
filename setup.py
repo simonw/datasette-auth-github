@@ -14,7 +14,7 @@ def get_long_description():
 
 setup(
     name="datasette-auth-github",
-    description="Datasette plugin that authenticates users against GitHub",
+    description="Datasette plugin and ASGI middleware that authenticates users against GitHub",
     long_description=get_long_description(),
     long_description_content_type="text/markdown",
     author="Simon Willison",

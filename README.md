@@ -4,7 +4,7 @@
 [![CircleCI](https://circleci.com/gh/simonw/datasette-auth-github.svg?style=svg)](https://circleci.com/gh/simonw/datasette-auth-github)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette-auth-github/blob/master/LICENSE)
 
-Datasette plugin that authenticates users against GitHub.
+Datasette plugin and ASGI middleware that authenticates users against GitHub.
 
 This requires datasette master - it uses unreleased plugin hooks.
 
