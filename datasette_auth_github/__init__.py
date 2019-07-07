@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import json
+import time
 from http.cookies import SimpleCookie
 from urllib.parse import parse_qsl
 
@@ -291,7 +292,9 @@ class GitHubAuth(AsgiAuth):
 
             # Set a signed cookie and redirect to homepage
             signer = Signer(self.cookie_secret)
-            signed_cookie = signer.sign(json.dumps(auth, separators=(",", ":")))
+            signed_cookie = signer.sign(
+                json.dumps(dict(auth, ts=int(time.time())), separators=(",", ":"))
+            )
             output_cookies = SimpleCookie()
             output_cookies[self.cookie_name] = signed_cookie
             output_cookies[self.cookie_name]["path"] = "/"
