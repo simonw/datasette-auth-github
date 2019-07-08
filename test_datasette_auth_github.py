@@ -137,6 +137,16 @@ async def test_signed_cookie_allows_access(path, wrapped_app):
             [b"cache-control", b"private"],
         ],
     } == output
+    # Should have got back the auth information we passed in
+    output = await instance.receive_output(1)
+    body_data = json.loads(output["body"].decode("utf8"))
+    assert "world" == body_data["hello"]
+    auth = body_data["auth"]
+    assert "123" == auth["id"]
+    assert "GitHub User" == auth["name"]
+    assert "demouser" == auth["username"]
+    assert "demouser@example.com" == auth["email"]
+    assert isinstance(auth["ts"], int)
 
 
 @pytest.mark.asyncio
@@ -441,7 +451,14 @@ async def hello_world_app(scope, receive, send):
             ],
         }
     )
-    await send({"type": "http.response.body", "body": b'{"hello": "world"}'})
+    await send(
+        {
+            "type": "http.response.body",
+            "body": json.dumps({"hello": "world", "auth": scope.get("auth")}).encode(
+                "utf8"
+            ),
+        }
+    )
 
 
 class MockGithubApiDispatch(AsyncDispatcher):
