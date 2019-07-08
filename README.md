@@ -170,3 +170,18 @@ app = GitHubAuth(
 ```
 
 The keyword arguments work in the same way as the Datasette plugin settings documented above.
+
+Once wrapped in this way, your application will redirect users to GitHub to authenticate if they are not yet signed in. Authentication is recorded using a signed cookie.
+
+The middleware adds a new `"auth"` key to the scope containing details of the signed-in user, which is then passed to your application. The contents of the `scope["auth"]` key will look like this:
+
+```json
+{
+    "id": "1234 (their GitHub user ID)",
+    "name": "Their Display Name",
+    "username": "their-github-username",
+    "email": "their-github@email-address.com",
+    "ts": 1562602415
+}
+```
+The `"ts"` value is an integer `time.time()` timestamp representing when the user last signed in.
