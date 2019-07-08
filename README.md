@@ -6,7 +6,7 @@
 
 Datasette plugin and ASGI middleware that authenticates users against GitHub.
 
-This requires datasette master - it uses unreleased plugin hooks.
+This requires [Datasette 0.29](https://datasette.readthedocs.io/en/stable/changelog.html#v0-29) or later.
 
 ## Setup instructions
 
