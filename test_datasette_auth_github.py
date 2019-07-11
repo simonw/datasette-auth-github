@@ -6,6 +6,8 @@ import pytest
 from asgiref.testing import ApplicationCommunicator
 from http3 import AsyncClient, AsyncDispatcher, AsyncResponse, codes
 
+from datasette.app import Datasette
+
 from datasette_auth_github import GitHubAuth
 from datasette_auth_github.utils import Signer
 
@@ -465,6 +467,50 @@ async def test_require_auth_false(require_auth_app):
     # And scope["auth"] should have been None
     body = await instance.receive_output(1)
     assert {"hello": "world", "auth": None} == json.loads(body["body"].decode("utf8"))
+
+
+@pytest.mark.asyncio
+async def test_datasette_plugin_installed():
+    instance = ApplicationCommunicator(
+        Datasette([], memory=True).app(),
+        {
+            "type": "http",
+            "http_version": "1.0",
+            "method": "GET",
+            "path": "/-/plugins.json",
+        },
+    )
+    await instance.send_input({"type": "http.request"})
+    response_start = await instance.receive_output(1)
+    assert "http.response.start" == response_start["type"]
+    assert 200 == response_start["status"]
+    body = await instance.receive_output(1)
+    assert [
+        {
+            "name": "datasette_auth_github",
+            "static": False,
+            "templates": True,
+            "version": "0.6.3",
+        }
+    ] == json.loads(body["body"].decode("utf8"))
+
+
+@pytest.mark.asyncio
+async def test_require_auth_is_true_when_used_as_datasette_plugin():
+    app = Datasette(
+        [],
+        memory=True,
+        metadata={
+            "plugins": {
+                "datasette-auth-github": {
+                    "client_id": "client_x",
+                    "client_secret": "client_secret_x",
+                }
+            }
+        },
+    ).app()
+    assert isinstance(app, GitHubAuth)
+    assert True == app.require_auth
 
 
 async def hello_world_app(scope, receive, send):
