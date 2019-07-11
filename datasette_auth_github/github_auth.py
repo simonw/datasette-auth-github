@@ -32,6 +32,7 @@ class GitHubAuth:
         app,
         client_id,
         client_secret,
+        require_auth=False,
         cookie_ttl=24 * 60 * 60,
         cookie_version=None,
         disable_auto_login=False,
@@ -42,6 +43,7 @@ class GitHubAuth:
         self.app = app
         self.client_id = client_id
         self.client_secret = client_secret
+        self.require_auth = require_auth
         self.cookie_ttl = cookie_ttl
         self.disable_auto_login = disable_auto_login
         self.allow_users = allow_users
@@ -78,10 +80,10 @@ class GitHubAuth:
             return await self.auth_callback(scope, receive, send)
 
         auth = self.auth_from_scope(scope)
-        if auth:
+        if auth or (not self.require_auth):
             await self.app(dict(scope, auth=auth), receive, send)
         else:
-            await self.require_auth(scope, receive, send)
+            await self.handle_require_auth(scope, receive, send)
 
     async def logout(self, scope, receive, send):
         headers = [["location", "/"]]
@@ -133,9 +135,6 @@ class GitHubAuth:
             if (int(time.time()) - self.cookie_ttl) > decoded["ts"]:
                 return None
         return decoded
-
-    async def require_auth(self, scope, receive, send):
-        await send_html(send, "<h1>Authentication required</h1>")
 
     async def user_is_allowed(self, auth, access_token):
         # If no permissions set at all, user is allowed
@@ -256,7 +255,7 @@ class GitHubAuth:
         headers.append(["set-cookie", asgi_logout_cookie.output(header="").lstrip()])
         await send_html(send, "", 302, headers)
 
-    async def require_auth(self, scope, receive, send):
+    async def handle_require_auth(self, scope, receive, send):
         cookie_headers = []
         if scope["path"] in self.redirect_path_blacklist:
             return await send_html(
