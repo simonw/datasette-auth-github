@@ -15,6 +15,11 @@ def asgi_wrapper(datasette):
     cookie_ttl = config.get("cookie_ttl") or 24 * 60 * 60
     cookie_version = config.get("cookie_version")
 
+    # require_auth defaults to True unless set otherwise
+    require_auth = True
+    if require_auth in config:
+        require_auth = config["require_auth"]
+
     def wrap_with_asgi_auth(app):
         if not (client_id and client_secret):
             return app
@@ -23,6 +28,7 @@ def asgi_wrapper(datasette):
             app,
             client_id=client_id,
             client_secret=client_secret,
+            require_auth=require_auth,
             cookie_version=cookie_version,
             cookie_ttl=cookie_ttl,
             disable_auto_login=disable_auto_login,

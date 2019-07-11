@@ -6,22 +6,29 @@ import pytest
 from asgiref.testing import ApplicationCommunicator
 from http3 import AsyncClient, AsyncDispatcher, AsyncResponse, codes
 
+from datasette.app import Datasette
+
 from datasette_auth_github import GitHubAuth
 from datasette_auth_github.utils import Signer
 
 
 @pytest.fixture
-def wrapped_app():
+def require_auth_app():
     return GitHubAuth(
-        hello_world_app, client_id="x_client_id", client_secret="x_client_secret"
+        hello_world_app,
+        client_id="x_client_id",
+        client_secret="x_client_secret",
+        require_auth=True,
     )
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["/", "/fixtures", "/foo/bar"])
-async def test_redirects_to_github_with_asgi_auth_redirect_cookie(path, wrapped_app):
+async def test_redirects_to_github_with_asgi_auth_redirect_cookie(
+    path, require_auth_app
+):
     instance = ApplicationCommunicator(
-        wrapped_app,
+        require_auth_app,
         {"type": "http", "http_version": "1.0", "method": "GET", "path": path},
     )
     await instance.send_input({"type": "http.request"})
@@ -46,9 +53,9 @@ async def test_redirects_to_github_with_asgi_auth_redirect_cookie(path, wrapped_
 
 
 @pytest.mark.asyncio
-async def test_logged_out_favicon_forbidden(wrapped_app):
+async def test_logged_out_favicon_forbidden(require_auth_app):
     instance = ApplicationCommunicator(
-        wrapped_app,
+        require_auth_app,
         {
             "type": "http",
             "http_version": "1.0",
@@ -65,16 +72,16 @@ async def test_logged_out_favicon_forbidden(wrapped_app):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("redirect_path", ["/", "/fixtures", "/foo/bar"])
 async def test_auth_callback_calls_github_apis_and_sets_cookie(
-    redirect_path, wrapped_app
+    redirect_path, require_auth_app
 ):
-    wrapped_app.github_api_client_factory = lambda: AsyncClient(
+    require_auth_app.github_api_client_factory = lambda: AsyncClient(
         dispatch=MockGithubApiDispatch()
     )
     cookie = SimpleCookie()
     cookie["asgi_auth_redirect"] = redirect_path
     cookie["asgi_auth_redirect"]["path"] = "/"
     instance = ApplicationCommunicator(
-        wrapped_app,
+        require_auth_app,
         {
             "type": "http",
             "http_version": "1.0",
@@ -86,7 +93,7 @@ async def test_auth_callback_calls_github_apis_and_sets_cookie(
     )
     await instance.send_input({"type": "http.request"})
     output = await instance.receive_output(1)
-    assert_redirects_and_sets_cookie(wrapped_app, output, redirect_path)
+    assert_redirects_and_sets_cookie(require_auth_app, output, redirect_path)
 
 
 def assert_redirects_and_sets_cookie(app, output, redirect_to="/"):
@@ -115,18 +122,18 @@ def assert_redirects_and_sets_cookie(app, output, redirect_to="/"):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["/", "/favicon.ico", "/fixtures"])
-async def test_signed_cookie_allows_access(path, wrapped_app):
+async def test_signed_cookie_allows_access(path, require_auth_app):
     scope = {
         "type": "http",
         "http_version": "1.0",
         "method": "GET",
         "path": path,
         "headers": [
-            [b"cookie", signed_auth_cookie_header(wrapped_app)],
+            [b"cookie", signed_auth_cookie_header(require_auth_app)],
             [b"cache-control", b"private"],
         ],
     }
-    instance = ApplicationCommunicator(wrapped_app, scope)
+    instance = ApplicationCommunicator(require_auth_app, scope)
     await instance.send_input({"type": "http.request"})
     output = await instance.receive_output(1)
     assert {
@@ -150,13 +157,13 @@ async def test_signed_cookie_allows_access(path, wrapped_app):
 
 
 @pytest.mark.asyncio
-async def test_corrupt_cookie_signature_is_denied_access(wrapped_app):
-    cookie = signed_auth_cookie_header(wrapped_app)
+async def test_corrupt_cookie_signature_is_denied_access(require_auth_app):
+    cookie = signed_auth_cookie_header(require_auth_app)
     # Corrupt the signature
     body, sig = cookie.rsplit(b":", 1)
     corrupt_cookie = body + b":" + b"x" + sig
     instance = ApplicationCommunicator(
-        wrapped_app,
+        require_auth_app,
         {
             "type": "http",
             "http_version": "1.0",
@@ -171,11 +178,11 @@ async def test_corrupt_cookie_signature_is_denied_access(wrapped_app):
 
 
 @pytest.mark.asyncio
-async def test_expired_cookie_is_denied_access(wrapped_app):
-    cookie = signed_auth_cookie_header(wrapped_app, ts=time.time() - 36 * 60 * 60)
+async def test_expired_cookie_is_denied_access(require_auth_app):
+    cookie = signed_auth_cookie_header(require_auth_app, ts=time.time() - 36 * 60 * 60)
     # Corrupt the signature
     instance = ApplicationCommunicator(
-        wrapped_app,
+        require_auth_app,
         {
             "type": "http",
             "http_version": "1.0",
@@ -192,7 +199,10 @@ async def test_expired_cookie_is_denied_access(wrapped_app):
 @pytest.mark.asyncio
 async def test_incrementing_cookie_version_denies_access():
     app = GitHubAuth(
-        hello_world_app, client_id="x_client_id", client_secret="x_client_secret"
+        hello_world_app,
+        client_id="x_client_id",
+        client_secret="x_client_secret",
+        require_auth=True,
     )
     cookie = signed_auth_cookie_header(app)
     scope = {
@@ -211,6 +221,7 @@ async def test_incrementing_cookie_version_denies_access():
         hello_world_app,
         client_id="x_client_id",
         client_secret="x_client_secret",
+        require_auth=True,
         cookie_version=2,
     )
     instance = ApplicationCommunicator(app, scope)
@@ -220,14 +231,14 @@ async def test_incrementing_cookie_version_denies_access():
 
 
 @pytest.mark.asyncio
-async def test_invalid_github_code_denied_access(wrapped_app):
-    wrapped_app.github_api_client_factory = lambda: AsyncClient(
+async def test_invalid_github_code_denied_access(require_auth_app):
+    require_auth_app.github_api_client_factory = lambda: AsyncClient(
         dispatch=MockGithubApiDispatch(
             b"error=bad_verification_code&error_description=The+code+passed+is+incorrect"
         )
     )
     instance = ApplicationCommunicator(
-        wrapped_app,
+        require_auth_app,
         {
             "type": "http",
             "http_version": "1.0",
@@ -245,9 +256,9 @@ async def test_invalid_github_code_denied_access(wrapped_app):
 
 
 @pytest.mark.asyncio
-async def test_logout(wrapped_app):
+async def test_logout(require_auth_app):
     instance = ApplicationCommunicator(
-        wrapped_app,
+        require_auth_app,
         {"type": "http", "http_version": "1.0", "method": "GET", "path": "/-/logout"},
     )
     await instance.send_input({"type": "http.request"})
@@ -290,10 +301,10 @@ async def assert_returns_logged_out_screen(instance, path):
 
 
 @pytest.mark.asyncio
-async def test_disable_auto_login_respected(wrapped_app):
-    wrapped_app.disable_auto_login = True
+async def test_disable_auto_login_respected(require_auth_app):
+    require_auth_app.disable_auto_login = True
     instance = ApplicationCommunicator(
-        wrapped_app,
+        require_auth_app,
         {"type": "http", "http_version": "1.0", "method": "GET", "path": "/"},
     )
     await instance.send_input({"type": "http.request"})
@@ -301,9 +312,9 @@ async def test_disable_auto_login_respected(wrapped_app):
 
 
 @pytest.mark.asyncio
-async def test_stay_logged_out_is_respected(wrapped_app):
+async def test_stay_logged_out_is_respected(require_auth_app):
     instance = ApplicationCommunicator(
-        wrapped_app,
+        require_auth_app,
         {
             "type": "http",
             "http_version": "1.0",
@@ -338,9 +349,9 @@ async def test_stay_logged_out_is_respected(wrapped_app):
         ["allow_teams", "demouser-org/pendingteam", False],
     ],
 )
-async def test_allow_rules(attr, attr_value, should_allow, wrapped_app):
-    setattr(wrapped_app, attr, attr_value)
-    wrapped_app.github_api_client_factory = lambda: AsyncClient(
+async def test_allow_rules(attr, attr_value, should_allow, require_auth_app):
+    setattr(require_auth_app, attr, attr_value)
+    require_auth_app.github_api_client_factory = lambda: AsyncClient(
         dispatch=MockGithubApiDispatch()
     )
     scope = {
@@ -350,12 +361,12 @@ async def test_allow_rules(attr, attr_value, should_allow, wrapped_app):
         "path": "/-/auth-callback",
         "query_string": b"code=github-code-here",
     }
-    instance = ApplicationCommunicator(wrapped_app, scope)
+    instance = ApplicationCommunicator(require_auth_app, scope)
     await instance.send_input({"type": "http.request"})
     output = await instance.receive_output(1)
     if should_allow:
         # Should redirect to homepage
-        assert_redirects_and_sets_cookie(wrapped_app, output)
+        assert_redirects_and_sets_cookie(require_auth_app, output)
     else:
         # Should return forbidden
         assert {"type": "http.response.start", "status": 403} == {
@@ -365,9 +376,9 @@ async def test_allow_rules(attr, attr_value, should_allow, wrapped_app):
 
 
 @pytest.mark.asyncio
-async def test_allow_orgs(wrapped_app):
-    wrapped_app.allow_orgs = ["my-org"]
-    wrapped_app.github_api_client_factory = lambda: AsyncClient(
+async def test_allow_orgs(require_auth_app):
+    require_auth_app.allow_orgs = ["my-org"]
+    require_auth_app.github_api_client_factory = lambda: AsyncClient(
         dispatch=MockGithubApiDispatch()
     )
     scope = {
@@ -377,7 +388,7 @@ async def test_allow_orgs(wrapped_app):
         "path": "/-/auth-callback",
         "query_string": b"code=github-code-here",
     }
-    instance = ApplicationCommunicator(wrapped_app, scope)
+    instance = ApplicationCommunicator(require_auth_app, scope)
     await instance.send_input({"type": "http.request"})
     output = await instance.receive_output(1)
     # Should return forbidden
@@ -386,8 +397,8 @@ async def test_allow_orgs(wrapped_app):
         "status": output["status"],
     }
     # Try again with an org they are a member of
-    wrapped_app.allow_orgs = ["demouser-org"]
-    instance = ApplicationCommunicator(wrapped_app, scope)
+    require_auth_app.allow_orgs = ["demouser-org"]
+    instance = ApplicationCommunicator(require_auth_app, scope)
     await instance.send_input({"type": "http.request"})
     output = await instance.receive_output(1)
     assert 302 == output["status"]
@@ -402,11 +413,11 @@ async def test_allow_orgs(wrapped_app):
         [{"allow_teams": ["foo/blah"]}, "read:org"],
     ],
 )
-async def test_oauth_scope(config, expected_scope, wrapped_app):
+async def test_oauth_scope(config, expected_scope, require_auth_app):
     for key, value in config.items():
-        setattr(wrapped_app, key, value)
+        setattr(require_auth_app, key, value)
     instance = ApplicationCommunicator(
-        wrapped_app,
+        require_auth_app,
         {"type": "http", "http_version": "1.0", "method": "GET", "path": "/"},
     )
     await instance.send_input({"type": "http.request"})
@@ -437,6 +448,69 @@ def signed_auth_cookie_header(app, ts=None):
     )
     cookie["asgi_auth"]["path"] = "/"
     return cookie.output(header="").lstrip().encode("utf8")
+
+
+@pytest.mark.asyncio
+async def test_require_auth_false(require_auth_app):
+    scope = {"type": "http", "http_version": "1.0", "method": "GET", "path": "/"}
+    # Should redirect if require_auth=True:
+    instance = ApplicationCommunicator(require_auth_app, scope)
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    assert 302 == output["status"]
+    # Should 200 if require_auth=False
+    require_auth_app.require_auth = False
+    instance = ApplicationCommunicator(require_auth_app, scope)
+    await instance.send_input({"type": "http.request"})
+    output2 = await instance.receive_output(1)
+    assert 200 == output2["status"]
+    # And scope["auth"] should have been None
+    body = await instance.receive_output(1)
+    assert {"hello": "world", "auth": None} == json.loads(body["body"].decode("utf8"))
+
+
+@pytest.mark.asyncio
+async def test_datasette_plugin_installed():
+    instance = ApplicationCommunicator(
+        Datasette([], memory=True).app(),
+        {
+            "type": "http",
+            "http_version": "1.0",
+            "method": "GET",
+            "path": "/-/plugins.json",
+        },
+    )
+    await instance.send_input({"type": "http.request"})
+    response_start = await instance.receive_output(1)
+    assert "http.response.start" == response_start["type"]
+    assert 200 == response_start["status"]
+    body = await instance.receive_output(1)
+    assert [
+        {
+            "name": "datasette_auth_github",
+            "static": False,
+            "templates": True,
+            "version": "0.6.3",
+        }
+    ] == json.loads(body["body"].decode("utf8"))
+
+
+@pytest.mark.asyncio
+async def test_require_auth_is_true_when_used_as_datasette_plugin():
+    app = Datasette(
+        [],
+        memory=True,
+        metadata={
+            "plugins": {
+                "datasette-auth-github": {
+                    "client_id": "client_x",
+                    "client_secret": "client_secret_x",
+                }
+            }
+        },
+    ).app()
+    assert isinstance(app, GitHubAuth)
+    assert True == app.require_auth
 
 
 async def hello_world_app(scope, receive, send):
