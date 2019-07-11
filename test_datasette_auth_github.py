@@ -1,4 +1,6 @@
 import json
+import pathlib
+import re
 import time
 from http.cookies import SimpleCookie
 
@@ -490,7 +492,7 @@ async def test_datasette_plugin_installed():
             "name": "datasette_auth_github",
             "static": False,
             "templates": True,
-            "version": "0.6.3",
+            "version": get_version_string(),
         }
     ] == json.loads(body["body"].decode("utf8"))
 
@@ -637,3 +639,10 @@ class MockGithubApiDispatch(AsyncDispatcher):
                 ).encode("utf-8"),
                 request=request,
             )
+
+
+def get_version_string():
+    # Extract 'VERSION = "0.6.3"' from setup.py
+    contents = (pathlib.Path(__file__).parent / "setup.py").read_text()
+    m = re.search(r'VERSION = "(.*?)"', contents)
+    return m.group(1)
