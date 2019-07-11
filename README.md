@@ -33,7 +33,24 @@ Now you can start Datasette like this, passing in the secrets as environment var
 
 Note that hard-coding secrets in `metadata.json` is a bad idea as they will be visible to anyone who can navigate to `/-/metadata`. Instead, we use a new mechanism for [adding secret plugin configuration options](https://datasette.readthedocs.io/en/latest/plugins.html#secret-configuration-values).
 
-By default, the plugin will redirect signed-out users directly to GitHub.
+By default, the plugin will require users to sign in before they can interact with Datasette - but it will allow in anyone with a GitHub account.
+
+If you want anonymous users to be able to view Datasette without signing in, you can add the `"require_auth": false` setting to your configuration:
+
+```json
+{
+    "plugins": {
+        "datasette-auth-github": {
+            "client_id": ...,
+            "require_auth": false
+        }
+    }
+}
+```
+
+## Automatic log in
+
+Assuming you are requiring authentication (the default) Datasette will redirect users to GitHub to sign in. If the user has previously authenticated with GitHub they will be redirected back again automatically, providing an instant sign-on experience.
 
 If you would rather they saw a "You are logged out" screen with a button first, you can change this behaviour by adding the "disable_auto_login" setting to your configuration:
 
@@ -160,6 +177,7 @@ app = GitHubAuth(
     asgi_app,
     client_id="github_client_id",
     client_secret="github_client_secret",
+    require_auth=True, # Defaults to False
     # Other options:
     # cookie_ttl=60 * 60,
     # disable_auto_login=True,
@@ -170,6 +188,8 @@ app = GitHubAuth(
 ```
 
 The keyword arguments work in the same way as the Datasette plugin settings documented above.
+
+There's one key difference: when used as a plugin, `require_auth` defaults to True. If you are wrapping your own application using the middleware the default behaviour is to allow anonymous access - you need to explicitly set the `require_auth=True` keyword argument to change this behaviour.
 
 Once wrapped in this way, your application will redirect users to GitHub to authenticate if they are not yet signed in. Authentication is recorded using a signed cookie.
 
@@ -185,3 +205,5 @@ The middleware adds a new `"auth"` key to the scope containing details of the si
 }
 ```
 The `"ts"` value is an integer `time.time()` timestamp representing when the user last signed in.
+
+If the user is not signed in (and you are not using required authentication) the `"auth"` scope key will be set to `None`.
