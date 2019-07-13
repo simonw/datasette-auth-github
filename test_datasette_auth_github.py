@@ -6,12 +6,11 @@ from http.cookies import SimpleCookie
 
 import pytest
 from asgiref.testing import ApplicationCommunicator
-from http3 import AsyncClient, AsyncDispatcher, AsyncResponse, codes
 
 from datasette.app import Datasette
 
-from datasette_auth_github import GitHubAuth
-from datasette_auth_github.utils import Signer
+from datasette_auth_github import GitHubAuth as GitHubAuthOriginal
+from datasette_auth_github.utils import Signer, Response
 
 
 @pytest.fixture
@@ -76,9 +75,6 @@ async def test_logged_out_favicon_forbidden(require_auth_app):
 async def test_auth_callback_calls_github_apis_and_sets_cookie(
     redirect_path, require_auth_app
 ):
-    require_auth_app.github_api_client_factory = lambda: AsyncClient(
-        dispatch=MockGithubApiDispatch()
-    )
     cookie = SimpleCookie()
     cookie["asgi_auth_redirect"] = redirect_path
     cookie["asgi_auth_redirect"]["path"] = "/"
@@ -234,10 +230,8 @@ async def test_incrementing_cookie_version_denies_access():
 
 @pytest.mark.asyncio
 async def test_invalid_github_code_denied_access(require_auth_app):
-    require_auth_app.github_api_client_factory = lambda: AsyncClient(
-        dispatch=MockGithubApiDispatch(
-            b"error=bad_verification_code&error_description=The+code+passed+is+incorrect"
-        )
+    require_auth_app.access_token_response = (
+        b"error=bad_verification_code&error_description=The+code+passed+is+incorrect"
     )
     instance = ApplicationCommunicator(
         require_auth_app,
@@ -353,9 +347,6 @@ async def test_stay_logged_out_is_respected(require_auth_app):
 )
 async def test_allow_rules(attr, attr_value, should_allow, require_auth_app):
     setattr(require_auth_app, attr, attr_value)
-    require_auth_app.github_api_client_factory = lambda: AsyncClient(
-        dispatch=MockGithubApiDispatch()
-    )
     scope = {
         "type": "http",
         "http_version": "1.0",
@@ -380,9 +371,6 @@ async def test_allow_rules(attr, attr_value, should_allow, require_auth_app):
 @pytest.mark.asyncio
 async def test_allow_orgs(require_auth_app):
     require_auth_app.allow_orgs = ["my-org"]
-    require_auth_app.github_api_client_factory = lambda: AsyncClient(
-        dispatch=MockGithubApiDispatch()
-    )
     scope = {
         "type": "http",
         "http_version": "1.0",
@@ -511,7 +499,7 @@ async def test_require_auth_is_true_when_used_as_datasette_plugin():
             }
         },
     ).app()
-    assert isinstance(app, GitHubAuth)
+    assert isinstance(app, GitHubAuthOriginal)
     assert True == app.require_auth
 
 
@@ -537,39 +525,40 @@ async def hello_world_app(scope, receive, send):
     )
 
 
-class MockGithubApiDispatch(AsyncDispatcher):
-    def __init__(self, access_token_response=b"access_token=x_access_token"):
-        self.access_token_response = access_token_response
+def get_version_string():
+    # Extract 'VERSION = "0.6.3"' from setup.py
+    contents = (pathlib.Path(__file__).parent / "setup.py").read_text()
+    m = re.search(r'VERSION = "(.*?)"', contents)
+    return m.group(1)
 
-    async def send(self, request, verify=None, cert=None, timeout=None):
-        if request.url.path == "/login/oauth/access_token" and request.method == "POST":
-            return AsyncResponse(
-                codes.OK, content=self.access_token_response, request=request
-            )
-        elif (
-            request.url.path.startswith("/orgs/")
-            and "/memberships/" in request.url.path
-        ):
+
+class GitHubAuth(GitHubAuthOriginal):
+    access_token_response = b"access_token=x_access_token"
+
+    async def http_request(self, url, body=None):
+        method = "GET" if body is None else "POST"
+        path = url.split("github.com")[1]
+        if path == "/login/oauth/access_token" and method == "POST":
+            return Response(200, (), self.access_token_response)
+        elif path.startswith("/orgs/") and "/memberships/" in path:
             # It's an organization membership check
-            org = request.url.path.split("/orgs/")[1].split("/")[0]
+            org = path.split("/orgs/")[1].split("/")[0]
             if org in ("demouser-org", "pending-org"):
                 member_state = {"demouser-org": "active", "pending-org": "pending"}[org]
-                return AsyncResponse(
-                    codes.OK,
-                    content=json.dumps(
-                        {"state": member_state, "role": "member"}
-                    ).encode("utf8"),
-                    request=request,
+                return Response(
+                    200,
+                    (),
+                    json.dumps({"state": member_state, "role": "member"}).encode(
+                        "utf8"
+                    ),
                 )
             else:
-                return AsyncResponse(
-                    codes.FORBIDDEN,
-                    content=json.dumps({"message": "Not a member"}).encode("utf8"),
-                    request=request,
+                return Response(
+                    403, (), json.dumps({"message": "Not a member"}).encode("utf8")
                 )
-        elif request.url.path.startswith("/orgs/") and "/teams/" in request.url.path:
+        elif path.startswith("/orgs/") and "/teams/" in path:
             # /orgs/eventbrite/teams/engineering team ID lookup
-            team_slug = request.url.path.split("/")[-1]
+            team_slug = path.split("/")[-1].split("?")[0]
             if team_slug in ("thetopteam", "pendingteam"):
                 team_info = {
                     "thetopteam": {
@@ -583,53 +572,39 @@ class MockGithubApiDispatch(AsyncDispatcher):
                         "slug": "pendingteam",
                     },
                 }[team_slug]
-                return AsyncResponse(
-                    codes.OK,
-                    content=json.dumps(team_info).encode("utf-8"),
-                    request=request,
-                )
+                return Response(200, (), json.dumps(team_info).encode("utf-8"))
             else:
-                return AsyncResponse(
-                    codes.NOT_FOUND,
-                    content=json.dumps({"message": "Not found"}).encode("utf8"),
-                    request=request,
+                return Response(
+                    404, (), json.dumps({"message": "Not found"}).encode("utf8")
                 )
-        elif (
-            request.url.path.startswith("/teams/")
-            and "/memberships/" in request.url.path
-        ):
+        elif path.startswith("/teams/") and "/memberships/" in path:
             # Team membership check
-            if "54321" in request.url.path:
-                return AsyncResponse(
-                    codes.OK,
-                    content=json.dumps({"state": "active", "role": "member"}).encode(
-                        "utf8"
-                    ),
-                    request=request,
+            if "54321" in path:
+                return Response(
+                    200,
+                    (),
+                    json.dumps({"state": "active", "role": "member"}).encode("utf8"),
                 )
-            elif "59999" in request.url.path:
+            elif "59999" in path:
                 # User is pending in this team
-                return AsyncResponse(
-                    codes.OK,
-                    content=json.dumps({"state": "pending", "role": "member"}).encode(
-                        "utf8"
-                    ),
-                    request=request,
+                return Response(
+                    200,
+                    (),
+                    json.dumps({"state": "pending", "role": "member"}).encode("utf8"),
                 )
             else:
-                return AsyncResponse(
-                    codes.NOT_FOUND,
-                    content=json.dumps({"message": "Not found"}).encode("utf8"),
-                    request=request,
+                return Response(
+                    404, (), json.dumps({"message": "Not found"}).encode("utf8")
                 )
         elif (
-            request.url.path == "/user"
-            and request.url.query == "access_token=x_access_token"
-            and request.method == "GET"
+            path.startswith("/user")
+            and "access_token=x_access_token" in path
+            and method == "GET"
         ):
-            return AsyncResponse(
-                codes.OK,
-                content=json.dumps(
+            return Response(
+                200,
+                (),
+                json.dumps(
                     {
                         "id": 123,
                         "name": "GitHub User",
@@ -637,12 +612,4 @@ class MockGithubApiDispatch(AsyncDispatcher):
                         "email": "demouser@example.com",
                     }
                 ).encode("utf-8"),
-                request=request,
             )
-
-
-def get_version_string():
-    # Extract 'VERSION = "0.6.3"' from setup.py
-    contents = (pathlib.Path(__file__).parent / "setup.py").read_text()
-    m = re.search(r'VERSION = "(.*?)"', contents)
-    return m.group(1)

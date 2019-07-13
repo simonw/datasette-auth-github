@@ -2,11 +2,16 @@ import hashlib
 import json
 import time
 from http.cookies import SimpleCookie
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, urlencode
 
-import http3
-
-from .utils import BadSignature, Signer, force_list, send_html, cookies_from_scope
+from .utils import (
+    BadSignature,
+    Signer,
+    force_list,
+    send_html,
+    cookies_from_scope,
+    http_request,
+)
 
 LOGIN_CSS = """
 <style>
@@ -24,8 +29,6 @@ class GitHubAuth:
     callback_path = "/-/auth-callback"
     logout_path = "/-/logout"
     redirect_path_blacklist = {"/favicon.ico"}
-    # Tests can over-ride github_api_client_factory here:
-    github_api_client_factory = http3.AsyncClient
 
     def __init__(
         self,
@@ -59,6 +62,9 @@ class GitHubAuth:
             b"cookie_secret_salt",
             100000,
         )
+
+    async def http_request(self, url, body=None):
+        return await http_request(url, body)
 
     def oauth_scope(self):
         if self.allow_teams is not None:
@@ -154,7 +160,7 @@ class GitHubAuth:
                 url = "https://api.github.com/orgs/{}/memberships/{}?access_token={}".format(
                     org, auth["username"], access_token
                 )
-                response = await self.github_api_client_factory().get(url)
+                response = await self.http_request(url)
                 if response.status_code == 200 and response.json()["state"] == "active":
                     return True
         if self.allow_teams is not None:
@@ -165,7 +171,7 @@ class GitHubAuth:
                     lookup_url = "https://api.github.com/orgs/{}/teams/{}?access_token={}".format(
                         org_slug, team_slug, access_token
                     )
-                    response = await self.github_api_client_factory().get(lookup_url)
+                    response = await self.http_request(lookup_url)
                     if response.status_code == 200:
                         self.team_to_team_id[team] = response.json()["id"]
                     else:
@@ -175,9 +181,7 @@ class GitHubAuth:
                 team_membership_url = "https://api.github.com/teams/{}/memberships/{}?access_token={}".format(
                     team_id, auth["username"], access_token
                 )
-                response = await self.github_api_client_factory().get(
-                    team_membership_url
-                )
+                response = await self.http_request(team_membership_url)
                 if response.status_code == 200 and response.json()["state"] == "active":
                     return True
 
@@ -191,13 +195,15 @@ class GitHubAuth:
             return
         # Exchange that code for a token
         github_response = (
-            await self.github_api_client_factory().post(
+            await self.http_request(
                 "https://github.com/login/oauth/access_token",
-                data={
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                    "code": qs["code"],
-                },
+                body=urlencode(
+                    {
+                        "client_id": self.client_id,
+                        "client_secret": self.client_secret,
+                        "code": qs["code"],
+                    }
+                ).encode("utf-8"),
             )
         ).text
         parsed = dict(parse_qsl(github_response))
@@ -217,7 +223,7 @@ class GitHubAuth:
         # Use access_token to verify user
         profile_url = "https://api.github.com/user?access_token={}".format(access_token)
         try:
-            profile = (await self.github_api_client_factory().get(profile_url)).json()
+            profile = (await self.http_request(profile_url)).json()
         except ValueError:
             await send_html(send, "Could not load GitHub profile")
             return

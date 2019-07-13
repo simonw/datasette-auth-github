@@ -6,12 +6,16 @@ workflows:
           filters:
             tags:
               only: /.*/
-      - test-python-install:
+      - python-3-6:
           version: "3.6"
           requires:
             - build
-      - test-python-install:
+      - python-3-7:
           version: "3.7"
+          requires:
+            - build
+      - python-3-5:
+          version: "3.5"
           requires:
             - build
       - deploy:
@@ -40,14 +44,7 @@ jobs:
           key: v1-dependency-cache-{{ checksum "setup.py" }}
           paths:
             - "venv"
-      - run:
-          name: run tests
-          command: |
-            . venv/bin/activate
-            pip install -e .[test]
-            pip install pytest
-            pytest
-  test-python-install:
+  python-3-6: &python-template
     parameters:
       version:
         type: string
@@ -75,9 +72,17 @@ jobs:
             pip install -e .[test]
             pip install pytest
             pytest
+  python-3-7:
+    <<: *python-template
+    docker:
+      - image: circleci/python:3.7
+  python-3-5:
+    <<: *python-template
+    docker:
+      - image: circleci/python:3.5
   deploy:
     docker:
-      - image: circleci/python:3.6
+      - image: circleci/python:3.7
     steps:
       - checkout
       - restore_cache:

@@ -1,7 +1,10 @@
+import asyncio
 import base64
 import hashlib
 import hmac
 from http.cookies import SimpleCookie
+import json
+import urllib.request
 
 SALT = "datasette-auth-github"
 
@@ -47,6 +50,35 @@ async def send_html(send, html, status=200, headers=None):
         }
     )
     await send({"type": "http.response.body", "body": html.encode("utf8")})
+
+
+async def http_request(url, body=None):
+    "Performs POST if body provided, GET otherwise."
+
+    def _request():
+        message = urllib.request.urlopen(url, data=body)
+        return message.status, tuple(message.headers.raw_items()), message.read()
+
+    loop = asyncio.get_event_loop()
+    status_code, headers, body = await loop.run_in_executor(None, _request)
+    return Response(status_code, headers, body)
+
+
+class Response:
+    "Wrapper class making HTTP responses easier to work with"
+
+    def __init__(self, status_code, headers, body):
+        self.status_code = status_code
+        self.headers = headers
+        self.body = body
+
+    def json(self):
+        return json.loads(self.text)
+
+    @property
+    def text(self):
+        # Should decode according to Content-Type, for the moment assumes utf8
+        return self.body.decode("utf-8")
 
 
 def ensure_bytes(s):
