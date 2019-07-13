@@ -59,7 +59,7 @@ async def http_request(url, body=None):
         message = urllib.request.urlopen(url, data=body)
         return message.status, tuple(message.headers.raw_items()), message.read()
 
-    loop = asyncio.get_running_loop()
+    loop = asyncio.get_event_loop()
     status_code, headers, body = await loop.run_in_executor(None, _request)
     return Response(status_code, headers, body)
 
