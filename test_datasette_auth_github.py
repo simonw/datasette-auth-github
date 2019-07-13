@@ -371,9 +371,6 @@ async def test_allow_rules(attr, attr_value, should_allow, require_auth_app):
 @pytest.mark.asyncio
 async def test_allow_orgs(require_auth_app):
     require_auth_app.allow_orgs = ["my-org"]
-    require_auth_app.github_api_client_factory = lambda: AsyncClient(
-        dispatch=MockGithubApiDispatch()
-    )
     scope = {
         "type": "http",
         "http_version": "1.0",
