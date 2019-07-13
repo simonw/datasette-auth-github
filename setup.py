@@ -23,7 +23,6 @@ setup(
     version=VERSION,
     packages=["datasette_auth_github"],
     entry_points={"datasette": ["auth_github = datasette_auth_github"]},
-    install_requires=["http3~=0.6.6"],
     extras_require={
         "test": ["datasette", "pytest", "pytest-asyncio", "asgiref~=3.1.2"]
     },
