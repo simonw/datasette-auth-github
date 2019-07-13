@@ -280,7 +280,7 @@ class GitHubAuth:
         ):
             await send_html(
                 send,
-                """{}<h1>Logged out</h1><p><a href="{}">Log in with GitHub</a></p>""".format(
+                """{}<h1>Logged out</h1><p><a href="{}" target="_top">Log in with GitHub</a></p>""".format(
                     LOGIN_CSS, github_login_url
                 ),
                 headers=cookie_headers,
