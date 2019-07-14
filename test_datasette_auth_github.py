@@ -176,9 +176,13 @@ async def test_corrupt_cookie_signature_is_denied_access(require_auth_app):
 
 
 @pytest.mark.asyncio
-async def test_expired_cookie_is_denied_access(require_auth_app):
-    cookie = signed_auth_cookie_header(require_auth_app, ts=time.time() - 36 * 60 * 60)
-    # Corrupt the signature
+@pytest.mark.parametrize(
+    "cookie_age,should_allow", [((3600 - 10), True), ((3600 + 10), False)]
+)
+async def test_expired_cookie_is_denied_access(
+    cookie_age, should_allow, require_auth_app
+):
+    cookie = signed_auth_cookie_header(require_auth_app, ts=time.time() - cookie_age)
     instance = ApplicationCommunicator(
         require_auth_app,
         {
@@ -191,7 +195,10 @@ async def test_expired_cookie_is_denied_access(require_auth_app):
     )
     await instance.send_input({"type": "http.request"})
     output = await instance.receive_output(1)
-    assert 302 == output["status"]
+    if should_allow:
+        assert 200 == output["status"]
+    else:
+        assert 302 == output["status"]
 
 
 @pytest.mark.asyncio

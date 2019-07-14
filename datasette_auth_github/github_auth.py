@@ -60,7 +60,7 @@ class GitHubAuth:
         client_id,
         client_secret,
         require_auth=False,
-        cookie_ttl=24 * 60 * 60,
+        cookie_ttl=60 * 60,
         cookie_version=None,
         disable_auto_login=False,
         allow_users=None,

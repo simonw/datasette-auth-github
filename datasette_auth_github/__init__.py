@@ -12,7 +12,7 @@ def asgi_wrapper(datasette):
     allow_users = config.get("allow_users")
     allow_orgs = config.get("allow_orgs")
     allow_teams = config.get("allow_teams")
-    cookie_ttl = config.get("cookie_ttl") or 24 * 60 * 60
+    cookie_ttl = config.get("cookie_ttl") or 60 * 60
     cookie_version = config.get("cookie_version")
 
     # require_auth defaults to True unless set otherwise
