@@ -126,9 +126,9 @@ If your organization is [arranged into teams](https://help.github.com/en/article
 
 ## Cookie expiration
 
-The cookies set by this plugin default to expiring after 24 hours. Users with expired cookies will be automatically redirected back through GitHub to login, so they are unlikely to notice that their cookies have expired.
+The cookies set by this plugin default to expiring after an hour. Users with expired cookies will be automatically redirected back through GitHub to log in, so they are unlikely to notice that their cookies have expired.
 
-You can change the cookie expiration policy in seconds using the `cookie_ttl` setting. Here's how to reduce that timeout to an hour:
+You can change the cookie expiration policy in seconds using the `cookie_ttl` setting. Here's how to increase that timeout to 24 hours:
 
 ```json
 {
@@ -136,7 +136,7 @@ You can change the cookie expiration policy in seconds using the `cookie_ttl` se
         "datasette-auth-github": {
             "client_id": "...",
             "client_secret": "...",
-            "cookie_ttl": 3600
+            "cookie_ttl": 86400
         }
     }
 }
@@ -144,7 +144,7 @@ You can change the cookie expiration policy in seconds using the `cookie_ttl` se
 
 ## Forced cookie expiration
 
-If you are using GitHub organizations or teams with this plugin, you need to be aware that users may continue to hold valid cookies even after they have been removed from a team or organization - generally for up to 24 hours unless you have changed the `cookie_ttl`.
+If you are using GitHub organizations or teams with this plugin, you need to be aware that users may continue to hold valid cookies even after they have been removed from a team or organization - generally for up to an hour unless you have changed the `cookie_ttl`.
 
 If you need to revoke access to your instance immediately, you can do so using the `cookie_version` setting. Simply modify your metadata to add a new value for `cookie_version` and restart or redeploy your Datasette instance:
 
@@ -179,7 +179,7 @@ app = GitHubAuth(
     client_secret="github_client_secret",
     require_auth=True, # Defaults to False
     # Other options:
-    # cookie_ttl=60 * 60,
+    # cookie_ttl=24 * 60 * 60,
     # disable_auto_login=True,
     # allow_users=["simonw"],
     # allow_orgs=["my-org"],
