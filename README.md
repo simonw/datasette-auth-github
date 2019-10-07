@@ -207,3 +207,23 @@ The middleware adds a new `"auth"` key to the scope containing details of the si
 The `"ts"` value is an integer `time.time()` timestamp representing when the user last signed in.
 
 If the user is not signed in (and you are not using required authentication) the `"auth"` scope key will be set to `None`.
+
+### cacheable_prefixes
+
+By default, the middleware marks all returned responses as `cache-control: private`. This is to ensure that content which was meant to be private to an individual user is not accidentally stored and re-transmitted by any intermediary proxying caches.
+
+This means even static JavaScript and CSS assets will not be cached by the user's browser, which can have a negative impact on performance.
+
+You can specify path prefixes that should NOT be marked as `cache-control: private` using the `cacheable_prefixes` constructor argument:
+
+```python
+app = GitHubAuth(
+    asgi_app,
+    client_id="github_client_id",
+    client_secret="github_client_secret",
+    require_auth=True,
+    cacheable_prefixes=["/static/"],
+)
+```
+
+Now any files within the `/static/` directory will not have the `cache-control: private` header added by the middleware.
