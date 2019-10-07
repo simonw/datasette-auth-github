@@ -66,6 +66,7 @@ class GitHubAuth:
         allow_users=None,
         allow_orgs=None,
         allow_teams=None,
+        cacheable_prefixes=None,
     ):
         self.app = app
         self.client_id = client_id
@@ -76,6 +77,7 @@ class GitHubAuth:
         self.allow_users = allow_users
         self.allow_orgs = allow_orgs
         self.allow_teams = allow_teams
+        self.cacheable_prefixes = cacheable_prefixes or []
         self.team_to_team_id = {}
 
         cookie_version = cookie_version or "default"
@@ -101,7 +103,7 @@ class GitHubAuth:
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http":
             return await self.app(scope, receive, send)
-        send = self.wrapped_send(send)
+        send = self.wrapped_send(send, scope)
 
         if scope.get("path") == self.logout_path:
             return await self.logout(scope, receive, send)
@@ -129,21 +131,25 @@ class GitHubAuth:
         headers.append(["set-cookie", output_cookies.output(header="").lstrip()])
         await send_html(send, "", 302, headers)
 
-    def wrapped_send(self, send):
+    def wrapped_send(self, send, scope):
         async def wrapped_send(event):
             # We only wrap http.response.start with headers
             if not (event["type"] == "http.response.start" and event.get("headers")):
                 await send(event)
                 return
             # Rebuild headers to include cache-control: private
+            path = scope.get("path")
             original_headers = event.get("headers") or []
-            new_headers = [
-                [key, value]
-                for key, value in original_headers
-                if key.lower() != b"cache-control"
-            ]
-            new_headers.append([b"cache-control", b"private"])
-            await send({**event, **{"headers": new_headers}})
+            if any(path.startswith(prefix) for prefix in self.cacheable_prefixes):
+                await send(event)
+            else:
+                new_headers = [
+                    [key, value]
+                    for key, value in original_headers
+                    if key.lower() != b"cache-control"
+                ]
+                new_headers.append([b"cache-control", b"private"])
+                await send({**event, **{"headers": new_headers}})
 
         return wrapped_send
 

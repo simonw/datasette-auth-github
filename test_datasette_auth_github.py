@@ -467,6 +467,36 @@ async def test_require_auth_false(require_auth_app):
 
 
 @pytest.mark.asyncio
+async def test_cacheable_assets(require_auth_app):
+    # Anything with a path matching cacheable_prefixes should not
+    # have a cache-control: private header
+    require_auth_app.cacheable_prefixes = ["/-/static/"]
+    scope = {
+        "type": "http",
+        "http_version": "1.0",
+        "method": "GET",
+        "path": "/-/static/blah.js",
+        "headers": [[b"cookie", signed_auth_cookie_header(require_auth_app)]],
+    }
+    instance = ApplicationCommunicator(require_auth_app, scope)
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    assert [
+        [b"content-type", b"text/html; charset=UTF-8"],
+        [b"cache-control", b"max-age=123"],
+    ] == output["headers"]
+    # BUT... if we reset cacheable_prefixes to [] it should behave as default:
+    require_auth_app.cacheable_prefixes = []
+    instance = ApplicationCommunicator(require_auth_app, scope)
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    assert [
+        [b"content-type", b"text/html; charset=UTF-8"],
+        [b"cache-control", b"private"],
+    ] == output["headers"]
+
+
+@pytest.mark.asyncio
 async def test_datasette_plugin_installed():
     instance = ApplicationCommunicator(
         Datasette([], memory=True).app(),

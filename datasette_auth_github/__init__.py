@@ -35,6 +35,7 @@ def asgi_wrapper(datasette):
             allow_users=allow_users,
             allow_orgs=allow_orgs,
             allow_teams=allow_teams,
+            cacheable_prefixes=["/-/static/", "/-/static-plugins/"],
         )
 
     return wrap_with_asgi_auth
