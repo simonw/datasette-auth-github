@@ -276,7 +276,7 @@ class GitHubAuth:
             json.dumps(dict(auth, ts=int(time.time())), separators=(",", ":"))
         )
 
-        redirect_to = cookies_from_scope(scope).get("asgi_auth_redirect") or "/"
+        redirect_to = cookies_from_scope(scope).get(self.redirect_cookie_name) or "/"
 
         headers = [["location", redirect_to]]
         login_cookie = SimpleCookie()
@@ -291,6 +291,13 @@ class GitHubAuth:
         headers.append(["set-cookie", asgi_logout_cookie.output(header="").lstrip()])
         await send_html(send, "", 302, headers)
 
+    def make_redirect_cookie(self, scope):
+        """cookie to tell browser where to redirect post authentication"""
+        redirect_cookie = SimpleCookie()
+        redirect_cookie[self.redirect_cookie_name] = scope["path"]
+        redirect_cookie[self.redirect_cookie_name]["path"] = "/"
+        return redirect_cookie
+
     async def handle_require_auth(self, scope, receive, send):
         cookie_headers = []
         if scope["path"] in self.redirect_path_blacklist:
@@ -298,9 +305,7 @@ class GitHubAuth:
                 send, """{}<h1>Access forbidden</h1>""".format(LOGIN_CSS), status=403
             )
         # Set asgi_auth_redirect cookie
-        redirect_cookie = SimpleCookie()
-        redirect_cookie[self.redirect_cookie_name] = scope["path"]
-        redirect_cookie[self.redirect_cookie_name]["path"] = "/"
+        redirect_cookie = self.make_redirect_cookie(scope)
         cookie_headers = [["set-cookie", redirect_cookie.output(header="").lstrip()]]
         github_login_url = "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(
             self.oauth_scope(), self.client_id
