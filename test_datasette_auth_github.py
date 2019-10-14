@@ -512,14 +512,8 @@ async def test_datasette_plugin_installed():
     assert "http.response.start" == response_start["type"]
     assert 200 == response_start["status"]
     body = await instance.receive_output(1)
-    assert [
-        {
-            "name": "datasette_auth_github",
-            "static": False,
-            "templates": True,
-            "version": get_version_string(),
-        }
-    ] == json.loads(body["body"].decode("utf8"))
+    data = json.loads(body["body"].decode("utf8"))
+    assert "datasette_auth_github" == data[0]["name"]
 
 
 @pytest.mark.asyncio
@@ -560,13 +554,6 @@ async def hello_world_app(scope, receive, send):
             ),
         }
     )
-
-
-def get_version_string():
-    # Extract 'VERSION = "0.6.3"' from setup.py
-    contents = (pathlib.Path(__file__).parent / "setup.py").read_text()
-    m = re.search(r'VERSION = "(.*?)"', contents)
-    return m.group(1)
 
 
 class GitHubAuth(GitHubAuthOriginal):
