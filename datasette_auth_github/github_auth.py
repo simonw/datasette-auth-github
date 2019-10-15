@@ -54,6 +54,7 @@ class GitHubAuth:
     callback_path = "/-/auth-callback"
     logout_path = "/-/logout"
     redirect_path_blacklist = ["/favicon.ico", "/-/static/*", "/-/static-plugins/*"]
+    provider = "GitHub"
 
     def __init__(
         self,
@@ -88,6 +89,10 @@ class GitHubAuth:
             "{}:{}:{}".format(client_id, client_secret, cookie_version).encode("utf8"),
             b"cookie_secret_salt",
             100000,
+        )
+        # url endpoints used
+        self.login_url = "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(
+            self.oauth_scope(), self.client_id
         )
 
     async def http_request(self, url, body=None):
@@ -218,13 +223,7 @@ class GitHubAuth:
 
         return False
 
-    async def auth_callback(self, scope, receive, send):
-        # Look for ?code=
-        qs = dict(parse_qsl(scope["query_string"].decode("utf8")))
-        if not qs.get("code"):
-            await send_html(send, "Authentication failed, no code")
-            return
-        # Exchange that code for a token
+    async def exchange_code_for_token(self, code):
         github_response = (
             await self.http_request(
                 "https://github.com/login/oauth/access_token",
@@ -232,18 +231,43 @@ class GitHubAuth:
                     {
                         "client_id": self.client_id,
                         "client_secret": self.client_secret,
-                        "code": qs["code"],
+                        "code": code,
                     }
                 ).encode("utf-8"),
             )
         ).text
-        parsed = dict(parse_qsl(github_response))
+        return dict(parse_qsl(github_response))
+
+    async def fetch_auth_for_token(self, access_token):
+        profile_url = "https://api.github.com/user?access_token={}".format(access_token)
+        try:
+            profile = (await self.http_request(profile_url)).json()
+        except ValueError:
+            return {}
+
+        return {
+            "id": str(profile["id"]),
+            "name": profile["name"],
+            "username": profile["login"],
+            "email": profile["email"],
+        }
+
+    async def auth_callback(self, scope, receive, send):
+        # Look for ?code=
+        qs = dict(parse_qsl(scope["query_string"].decode("utf8")))
+        if not qs.get("code"):
+            await send_html(send, "Authentication failed, no code")
+            return
+
+        # Exchange that code for a token
+        parsed = await self.exchange_code_for_token(qs['code'])
+
         # b'error=bad_verification_code&error_description=The+code+passed...'
         if parsed.get("error"):
             await send_html(
                 send,
-                "{}<h1>GitHub authentication error</h1><p>{}</p><p>{}</p>".format(
-                    LOGIN_CSS, parsed["error"], parsed.get("error_description") or ""
+                "{}<h1>{} authentication error</h1><p>{}</p><p>{}</p>".format(
+                    LOGIN_CSS, self.provider, parsed["error"], parsed.get("error_description") or ""
                 ),
             )
             return
@@ -251,19 +275,13 @@ class GitHubAuth:
         if not access_token:
             await send_html(send, "No valid access token")
             return
+
         # Use access_token to verify user
-        profile_url = "https://api.github.com/user?access_token={}".format(access_token)
-        try:
-            profile = (await self.http_request(profile_url)).json()
-        except ValueError:
-            await send_html(send, "Could not load GitHub profile")
+        auth = await self.fetch_auth_for_token(access_token)
+        if not auth:
+            await send_html(send, "Could not load {} profile".format(self.provider))
             return
-        auth = {
-            "id": str(profile["id"]),
-            "name": profile["name"],
-            "username": profile["login"],
-            "email": profile["email"],
-        }
+
         # Are they allowed?
         if not (await self.user_is_allowed(auth, access_token)):
             await send_html(
@@ -314,20 +332,17 @@ class GitHubAuth:
         # Set asgi_auth_redirect cookie
         redirect_cookie = self.make_redirect_cookie(scope)
         cookie_headers = [["set-cookie", redirect_cookie.output(header="").lstrip()]]
-        github_login_url = "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(
-            self.oauth_scope(), self.client_id
-        )
         if self.disable_auto_login or cookies_from_scope(scope).get(
             self.logout_cookie_name
         ):
             await send_html(
                 send,
                 """{}<h1>Logged out</h1><p>{}</p>""".format(
-                    LOGIN_CSS, LOGIN_BUTTON.format(github_login_url)
+                    LOGIN_CSS, LOGIN_BUTTON.format(self.login_url)
                 ),
                 headers=cookie_headers,
             )
         else:
             await send_html(
-                send, "", 302, [["location", github_login_url]] + cookie_headers
+                send, "", 302, [["location", self.login_url]] + cookie_headers
             )
