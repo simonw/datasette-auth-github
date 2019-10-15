@@ -8,3 +8,6 @@ venv
 *.egg-info
 build/
 dist/
+
+# editor
+.vscode/
