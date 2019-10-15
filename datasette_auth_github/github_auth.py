@@ -1,3 +1,4 @@
+import fnmatch
 import hashlib
 import json
 import time
@@ -52,7 +53,7 @@ class GitHubAuth:
     redirect_cookie_name = "asgi_auth_redirect"
     callback_path = "/-/auth-callback"
     logout_path = "/-/logout"
-    redirect_path_blacklist = {"/favicon.ico"}
+    redirect_path_blacklist = ["/favicon.ico", "/-/static/*", "/-/static-plugins/*"]
 
     def __init__(
         self,
@@ -298,9 +299,15 @@ class GitHubAuth:
         redirect_cookie[self.redirect_cookie_name]["path"] = "/"
         return redirect_cookie
 
+    def do_not_redirect(self, scope):
+        return any(
+            fnmatch.fnmatchcase(scope["path"], pat)
+            for pat in self.redirect_path_blacklist
+        )
+
     async def handle_require_auth(self, scope, receive, send):
         cookie_headers = []
-        if scope["path"] in self.redirect_path_blacklist:
+        if self.do_not_redirect(scope):
             return await send_html(
                 send, """{}<h1>Access forbidden</h1>""".format(LOGIN_CSS), status=403
             )

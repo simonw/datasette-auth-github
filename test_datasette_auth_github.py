@@ -496,6 +496,21 @@ async def test_cacheable_assets(require_auth_app):
     ] == output["headers"]
 
 
+@pytest.mark.parametrize(
+    "path,expected",
+    (
+        ("/favicon.ico", True),
+        ("/favicon2.ico", False),
+        ("/-/static/blah", True),
+        ("/-/static1/blah", False),
+        ("/-/static-plugins/blah", True),
+        ("/-/static1-plugins/blah", False),
+    ),
+)
+def test_do_not_redirect(require_auth_app, path, expected):
+    assert expected == require_auth_app.do_not_redirect({"path": path})
+
+
 @pytest.mark.asyncio
 async def test_datasette_plugin_installed():
     instance = ApplicationCommunicator(
