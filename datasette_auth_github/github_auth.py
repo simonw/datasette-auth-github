@@ -90,10 +90,6 @@ class GitHubAuth:
             b"cookie_secret_salt",
             100000,
         )
-        # url endpoints used
-        self.login_url = "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(
-            self.oauth_scope(), self.client_id
-        )
 
     async def http_request(self, url, body=None):
         return await http_request(url, body)
@@ -105,6 +101,12 @@ class GitHubAuth:
             return "user:email"
         else:
             return "user"
+
+    @property
+    def login_url(self):
+        return "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(
+            self.oauth_scope(), self.client_id
+        )
 
     async def __call__(self, scope, receive, send):
         if scope.get("type") != "http":
