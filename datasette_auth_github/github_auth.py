@@ -226,35 +226,6 @@ class GitHubAuth:
 
         return False
 
-    async def exchange_code_for_token(self, code):
-        github_response = (
-            await self.http_request(
-                "https://github.com/login/oauth/access_token",
-                body=urlencode(
-                    {
-                        "client_id": self.client_id,
-                        "client_secret": self.client_secret,
-                        "code": code,
-                    }
-                ).encode("utf-8"),
-            )
-        ).text
-        return dict(parse_qsl(github_response))
-
-    async def fetch_auth_for_token(self, access_token):
-        profile_url = "https://api.github.com/user?access_token={}".format(access_token)
-        try:
-            profile = (await self.http_request(profile_url)).json()
-        except ValueError:
-            return {}
-
-        return {
-            "id": str(profile["id"]),
-            "name": profile["name"],
-            "username": profile["login"],
-            "email": profile["email"],
-        }
-
     async def auth_callback(self, scope, receive, send):
         # Look for ?code=
         qs = dict(parse_qsl(scope["query_string"].decode("utf8")))
@@ -312,6 +283,35 @@ class GitHubAuth:
         asgi_logout_cookie[self.logout_cookie_name]["expires"] = 0
         headers.append(["set-cookie", asgi_logout_cookie.output(header="").lstrip()])
         await send_html(send, "", 302, headers)
+
+    async def exchange_code_for_token(self, code):
+        github_response = (
+            await self.http_request(
+                "https://github.com/login/oauth/access_token",
+                body=urlencode(
+                    {
+                        "client_id": self.client_id,
+                        "client_secret": self.client_secret,
+                        "code": code,
+                    }
+                ).encode("utf-8"),
+            )
+        ).text
+        return dict(parse_qsl(github_response))
+
+    async def fetch_auth_for_token(self, access_token):
+        profile_url = "https://api.github.com/user?access_token={}".format(access_token)
+        try:
+            profile = (await self.http_request(profile_url)).json()
+        except ValueError:
+            return {}
+
+        return {
+            "id": str(profile["id"]),
+            "name": profile["name"],
+            "username": profile["login"],
+            "email": profile["email"],
+        }
 
     def make_redirect_cookie(self, scope):
         """cookie to tell browser where to redirect post authentication"""
