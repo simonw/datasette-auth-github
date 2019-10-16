@@ -55,6 +55,7 @@ class GitHubAuth:
     logout_path = "/-/logout"
     redirect_path_blacklist = ["/favicon.ico", "/-/static/*", "/-/static-plugins/*"]
     provider = "GitHub"
+    login_button = LOGIN_BUTTON
 
     def __init__(
         self,
@@ -340,7 +341,7 @@ class GitHubAuth:
             await send_html(
                 send,
                 """{}<h1>Logged out</h1><p>{}</p>""".format(
-                    LOGIN_CSS, LOGIN_BUTTON.format(self.login_url)
+                    LOGIN_CSS, self.login_button.format(self.login_url)
                 ),
                 headers=cookie_headers,
             )

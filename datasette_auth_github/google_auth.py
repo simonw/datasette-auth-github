@@ -1,28 +1,10 @@
-import hashlib
-import json
-import time
-from http.cookies import SimpleCookie
-from urllib.parse import parse_qsl, urlencode
+from urllib.parse import urlencode
 
-from .utils import (
-    BadSignature,
-    Signer,
-    force_list,
-    send_html,
-    cookies_from_scope,
-    http_request,
-)
+from .github_auth import GitHubAuth, LOGIN_CSS
+from .utils import force_list, http_request
 
-from .github_auth import GitHubAuth
 
-LOGIN_CSS = """
-<style>
-body {
-    font-family: "Helvetica Neue", sans-serif;
-    font-size: 1rem;
-}</style>
-"""
-
+# TODO: find a minified svg logo for Google
 LOGIN_BUTTON = """
 <a href="{}" target="_top" style="
   text-decoration: none;
@@ -49,7 +31,11 @@ width="512" height="512" rx="15%" fill="#1B1817"/>
 
 
 class GoogleAuth(GitHubAuth):
+    cookie_name = "google_" + "asgi_auth"
+    logout_cookie_name = "google_" + "asgi_auth_logout"
+    redirect_cookie_name = "google_" + "asgi_auth_redirect"
     provider = 'Google'
+    login_button = LOGIN_BUTTON
 
     def __init__(
         self,
@@ -130,7 +116,11 @@ class GoogleAuth(GitHubAuth):
                 ).encode("utf-8"),
             )
         )
-        return response.json()
+        parsed = response.json()
+        return {
+            **parsed, 
+            'access_token': parsed.get('id_token', '')
+        } # google oauth provider works with an id-token value
 
     async def fetch_auth_for_token(self, access_token):
         # use with id_token  "https://oauth2.googleapis.com/tokeninfo?id_token={}"
