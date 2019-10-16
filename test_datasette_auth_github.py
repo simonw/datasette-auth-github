@@ -528,7 +528,8 @@ async def test_datasette_plugin_installed():
     assert 200 == response_start["status"]
     body = await instance.receive_output(1)
     data = json.loads(body["body"].decode("utf8"))
-    assert "datasette_auth_github" == data[0]["name"]
+    plugin_pkgs = [x["name"] for x in data]
+    assert "datasette_auth_github" in plugin_pkgs
 
 
 @pytest.mark.asyncio
