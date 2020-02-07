@@ -90,8 +90,8 @@ class GitHubAuth:
             100000,
         )
 
-    async def http_request(self, url, body=None):
-        return await http_request(url, body)
+    async def http_request(self, url, body=None, headers=None):
+        return await http_request(url, body, headers)
 
     def oauth_scope(self):
         if self.allow_teams is not None:
@@ -188,10 +188,12 @@ class GitHubAuth:
         if self.allow_orgs is not None:
             # For each org, check if user is a member
             for org in force_list(self.allow_orgs):
-                url = "https://api.github.com/orgs/{}/memberships/{}?access_token={}".format(
-                    org, auth["username"], access_token
+                url = "https://api.github.com/orgs/{}/memberships/{}".format(
+                    org, auth["username"]
                 )
-                response = await self.http_request(url)
+                response = await self.http_request(
+                    url, headers={"Authorization": "token {}".format(access_token)}
+                )
                 if response.status_code == 200 and response.json()["state"] == "active":
                     return True
         if self.allow_teams is not None:
@@ -199,20 +201,26 @@ class GitHubAuth:
                 if team not in self.team_to_team_id:
                     # Look up the team_id using the GitHub API
                     org_slug, _, team_slug = team.partition("/")
-                    lookup_url = "https://api.github.com/orgs/{}/teams/{}?access_token={}".format(
-                        org_slug, team_slug, access_token
+                    lookup_url = "https://api.github.com/orgs/{}/teams/{}".format(
+                        org_slug, team_slug
                     )
-                    response = await self.http_request(lookup_url)
+                    response = await self.http_request(
+                        lookup_url,
+                        headers={"Authorization": "token {}".format(access_token)},
+                    )
                     if response.status_code == 200:
                         self.team_to_team_id[team] = response.json()["id"]
                     else:
                         return False
                 team_id = self.team_to_team_id[team]
                 # Check if the user is a member of this team
-                team_membership_url = "https://api.github.com/teams/{}/memberships/{}?access_token={}".format(
-                    team_id, auth["username"], access_token
+                team_membership_url = "https://api.github.com/teams/{}/memberships/{}".format(
+                    team_id, auth["username"]
                 )
-                response = await self.http_request(team_membership_url)
+                response = await self.http_request(
+                    team_membership_url,
+                    headers={"Authorization": "token {}".format(access_token)},
+                )
                 if response.status_code == 200 and response.json()["state"] == "active":
                     return True
 
@@ -252,9 +260,14 @@ class GitHubAuth:
             await send_html(send, "No valid access token")
             return
         # Use access_token to verify user
-        profile_url = "https://api.github.com/user?access_token={}".format(access_token)
+        profile_url = "https://api.github.com/user"
         try:
-            profile = (await self.http_request(profile_url)).json()
+            profile = (
+                await self.http_request(
+                    profile_url,
+                    headers={"Authorization": "token {}".format(access_token)},
+                )
+            ).json()
         except ValueError:
             await send_html(send, "Could not load GitHub profile")
             return

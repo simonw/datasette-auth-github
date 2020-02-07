@@ -574,7 +574,8 @@ async def hello_world_app(scope, receive, send):
 class GitHubAuth(GitHubAuthOriginal):
     access_token_response = b"access_token=x_access_token"
 
-    async def http_request(self, url, body=None):
+    async def http_request(self, url, body=None, headers=None):
+        headers = headers or {}
         method = "GET" if body is None else "POST"
         path = url.split("github.com")[1]
         if path == "/login/oauth/access_token" and method == "POST":
@@ -635,11 +636,8 @@ class GitHubAuth(GitHubAuthOriginal):
                 return Response(
                     404, (), json.dumps({"message": "Not found"}).encode("utf8")
                 )
-        elif (
-            path.startswith("/user")
-            and "access_token=x_access_token" in path
-            and method == "GET"
-        ):
+        elif path.startswith("/user") and method == "GET":
+            assert {"Authorization": "token x_access_token"} == headers
             return Response(
                 200,
                 (),
