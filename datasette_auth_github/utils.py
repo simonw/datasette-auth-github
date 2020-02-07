@@ -52,11 +52,12 @@ async def send_html(send, html, status=200, headers=None):
     await send({"type": "http.response.body", "body": html.encode("utf8")})
 
 
-async def http_request(url, body=None):
+async def http_request(url, body=None, headers=None):
     "Performs POST if body provided, GET otherwise."
+    headers = headers or {}
 
     def _request():
-        message = urllib.request.urlopen(url, data=body)
+        message = urllib.request.urlopen(urllib.request.Request(url, body, headers))
         return message.status, tuple(message.headers.raw_items()), message.read()
 
     loop = asyncio.get_event_loop()
