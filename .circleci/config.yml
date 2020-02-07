@@ -14,10 +14,6 @@ workflows:
           version: "3.7"
           requires:
             - build
-      - python-3-5:
-          version: "3.5"
-          requires:
-            - build
       - deploy:
           requires:
             - build
