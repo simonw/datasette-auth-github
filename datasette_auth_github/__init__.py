@@ -17,7 +17,7 @@ def asgi_wrapper(datasette):
 
     # require_auth defaults to True unless set otherwise
     require_auth = True
-    if require_auth in config:
+    if "require_auth" in config:
         require_auth = config["require_auth"]
 
     def wrap_with_asgi_auth(app):
