@@ -43,4 +43,4 @@ def asgi_wrapper(datasette):
 
 @hookimpl
 def extra_template_vars(request):
-    return {"auth": request.scope.get("auth")}
+    return {"auth": request.scope.get("auth") if request else None}
