@@ -579,6 +579,25 @@ async def test_require_auth_is_true_when_used_as_datasette_plugin():
     assert True == app.require_auth
 
 
+@pytest.mark.asyncio
+async def test_require_auth_is_false_when_defined_in_metadata():
+    app = Datasette(
+        [],
+        memory=True,
+        metadata={
+            "plugins": {
+                "datasette-auth-github": {
+                    "client_id": "client_x",
+                    "client_secret": "client_secret_x",
+                    "require_auth": False
+                }
+            }
+        }
+    ).app()
+    assert isinstance(app, GitHubAuthOriginal)
+    assert app.require_auth == False
+
+
 async def hello_world_app(scope, receive, send):
     assert scope["type"] == "http"
     await send(
