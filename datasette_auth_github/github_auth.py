@@ -155,6 +155,8 @@ class GitHubAuth:
         return wrapped_send
 
     def auth_from_scope(self, scope):
+        if "auth" in scope:
+            return scope["auth"]
         auth_cookie = cookies_from_scope(scope).get(self.cookie_name)
         if not auth_cookie:
             return None

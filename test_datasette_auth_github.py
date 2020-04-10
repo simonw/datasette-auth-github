@@ -155,6 +155,36 @@ async def test_signed_cookie_allows_access(path, require_auth_app):
 
 
 @pytest.mark.asyncio
+async def test_scope_auth_allows_access(require_auth_app):
+    scope = {
+        "type": "http",
+        "http_version": "1.0",
+        "method": "GET",
+        "path": "/",
+        "headers": [],
+        "auth": {"id": 1, "name": "authed"},
+    }
+    instance = ApplicationCommunicator(require_auth_app, scope)
+    await instance.send_input({"type": "http.request"})
+    output = await instance.receive_output(1)
+    assert {
+        "type": "http.response.start",
+        "status": 200,
+        "headers": [
+            [b"content-type", b"text/html; charset=UTF-8"],
+            [b"cache-control", b"private"],
+        ],
+    } == output
+    # Should have got back the auth information we passed in
+    output = await instance.receive_output(1)
+    body_data = json.loads(output["body"].decode("utf8"))
+    assert "world" == body_data["hello"]
+    auth = body_data["auth"]
+    assert 1 == auth["id"]
+    assert "authed" == auth["name"]
+
+
+@pytest.mark.asyncio
 async def test_corrupt_cookie_signature_is_denied_access(require_auth_app):
     cookie = signed_auth_cookie_header(require_auth_app)
     # Corrupt the signature
