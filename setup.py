@@ -13,18 +13,19 @@ def get_long_description():
 
 
 setup(
-    name="asgi-auth-github",
-    description="ASGI middleware that authenticates users against GitHub",
+    name="datasette-auth-github",
+    description="Datasette plugin and ASGI middleware that authenticates users against GitHub",
     long_description=get_long_description(),
     long_description_content_type="text/markdown",
     author="Simon Willison",
-    url="https://github.com/simonw/asgi-auth-github",
+    url="https://github.com/simonw/datasette-auth-github",
     license="Apache License, Version 2.0",
     version=VERSION,
-    packages=["asgi_auth_github"],
+    packages=["datasette_auth_github"],
+    entry_points={"datasette": ["auth_github = datasette_auth_github"]},
     extras_require={
-        "test": ["pytest", "pytest-asyncio", "asgiref~=3.1.2"]
+        "test": ["datasette", "pytest", "pytest-asyncio", "asgiref~=3.1.2"]
     },
-    tests_require=["asgi-auth-github[test]"],
-    package_data={"asgi_auth_github": ["templates/*.html"]},
+    tests_require=["datasette-auth-github[test]"],
+    package_data={"datasette_auth_github": ["templates/*.html"]},
 )
