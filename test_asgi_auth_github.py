@@ -7,10 +7,8 @@ from http.cookies import SimpleCookie
 import pytest
 from asgiref.testing import ApplicationCommunicator
 
-from datasette.app import Datasette
-
-from datasette_auth_github import GitHubAuth as GitHubAuthOriginal
-from datasette_auth_github.utils import Signer, Response
+from asgi_auth_github import GitHubAuth as GitHubAuthOriginal
+from asgi_auth_github.utils import Signer, Response
 
 
 @pytest.fixture
@@ -539,63 +537,6 @@ async def test_cacheable_assets(require_auth_app):
 )
 def test_do_not_redirect(require_auth_app, path, expected):
     assert expected == require_auth_app.do_not_redirect({"path": path})
-
-
-@pytest.mark.asyncio
-async def test_datasette_plugin_installed():
-    instance = ApplicationCommunicator(
-        Datasette([], memory=True).app(),
-        {
-            "type": "http",
-            "http_version": "1.0",
-            "method": "GET",
-            "path": "/-/plugins.json",
-        },
-    )
-    await instance.send_input({"type": "http.request"})
-    response_start = await instance.receive_output(1)
-    assert "http.response.start" == response_start["type"]
-    assert 200 == response_start["status"]
-    body = await instance.receive_output(1)
-    data = json.loads(body["body"].decode("utf8"))
-    assert "datasette-auth-github" == data[0]["name"]
-
-
-@pytest.mark.asyncio
-async def test_require_auth_is_true_when_used_as_datasette_plugin():
-    app = Datasette(
-        [],
-        memory=True,
-        metadata={
-            "plugins": {
-                "datasette-auth-github": {
-                    "client_id": "client_x",
-                    "client_secret": "client_secret_x",
-                }
-            }
-        },
-    ).app()
-    assert isinstance(app, GitHubAuthOriginal)
-    assert True == app.require_auth
-
-
-@pytest.mark.asyncio
-async def test_require_auth_is_false_when_defined_in_metadata():
-    app = Datasette(
-        [],
-        memory=True,
-        metadata={
-            "plugins": {
-                "datasette-auth-github": {
-                    "client_id": "client_x",
-                    "client_secret": "client_secret_x",
-                    "require_auth": False
-                }
-            }
-        }
-    ).app()
-    assert isinstance(app, GitHubAuthOriginal)
-    assert app.require_auth == False
 
 
 async def hello_world_app(scope, receive, send):
