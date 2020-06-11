@@ -4,9 +4,9 @@
 [![CircleCI](https://circleci.com/gh/simonw/datasette-auth-github.svg?style=svg)](https://circleci.com/gh/simonw/datasette-auth-github)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette-auth-github/blob/master/LICENSE)
 
-Datasette plugin and ASGI middleware that authenticates users against GitHub.
+Datasette plugin that authenticates users against GitHub.
 
-This requires [Datasette 0.29](https://datasette.readthedocs.io/en/stable/changelog.html#v0-29) or later.
+This requires [Datasette 0.44](https://datasette.readthedocs.io/en/latest/changelog.html#v0-44) or later.
 
 ## Setup instructions
 
@@ -26,6 +26,7 @@ This requires [Datasette 0.29](https://datasette.readthedocs.io/en/stable/change
     }
 }
 ```
+
 Now you can start Datasette like this, passing in the secrets as environment variables:
 
     $ GITHUB_CLIENT_ID=XXX GITHUB_CLIENT_SECRET=YYY datasette \
@@ -33,17 +34,77 @@ Now you can start Datasette like this, passing in the secrets as environment var
 
 Note that hard-coding secrets in `metadata.json` is a bad idea as they will be visible to anyone who can navigate to `/-/metadata`. Instead, we use a new mechanism for [adding secret plugin configuration options](https://datasette.readthedocs.io/en/latest/plugins.html#secret-configuration-values).
 
-By default, the plugin will require users to sign in before they can interact with Datasette - but it will allow in anyone with a GitHub account.
+By default anonymous users will still be able to interact with Datasette. If you wish all users to have to sign in with a GitHub account first, add this to your ``metadata.json``:
 
-If you want anonymous users to be able to view Datasette without signing in, you can add the `"require_auth": false` setting to your configuration:
+```json
+{
+    "allow": {
+        "id": "*"
+    },
+    "plugins": {
+        "datasette-auth-github": {
+            "...": "..."
+        }
+    }
+}
+```
+
+## Restricting access to specific users
+
+You can use Datasette's [permissions mechanism](https://datasette.readthedocs.io/en/stable/authentication.html) to specify which user or users are allowed to access your instance. Here's how to restrict access to just GitHub user `simonw`:
+
+```json
+{
+    "allow": {
+        "gh_user": "simonw"
+    },
+    "plugins": {
+        "datasette-auth-github": {
+            "...": "..."
+        }
+    }
+}
+```
+
+This `"allow"` block can be positioned at the database, table or query level instead: see [Configuring permissions in metadata.json](https://datasette.readthedocs.io/en/stable/authentication.html#configuring-permissions-in-metadata-json) for details.
+
+## Restricting access to specific GitHub organizations or teams
+
+You can also restrict access to users who are members of a specific GitHub organization.
+
+You'll need to configure the plugin to check if the user is a member of that organization when they first sign in. You can do that using the `"load_orgs"` plugin configuration option.
+
+Then you can use `"allow": {"gh_orgs": [...]}` to specify which organizations are allowed access.
 
 ```json
 {
     "plugins": {
         "datasette-auth-github": {
-            "client_id": ...,
-            "require_auth": false
+            "...": "...",
+            "load_orgs": ["your-organization"]
         }
+    },
+    "allow": {
+        "gh_org": "your-organization"
+    }
+}
+```
+
+If your organization is [arranged into teams](https://help.github.com/en/articles/organizing-members-into-teams) you can restrict access to a specific team like this:
+
+```json
+{
+    "plugins": {
+        "datasette-auth-github": {
+            "...": "...",
+            "load_teams": [
+                "your-organization/staff",
+                "your-organization/engineering",
+            ]
+        }
+    },
+    "allow": {
+        "gh_team": "your-organization/engineering"
     }
 }
 ```
@@ -65,64 +126,6 @@ If you would rather they saw a "You are logged out" screen with a button first, 
     }
 }
 ```
-
-## Restricting access to specific users
-
-By default the plugin will allow any GitHub user to log in. You can restrict allowed users to a specific list using the `allow_users` configuration option:
-
-```json
-{
-    "plugins": {
-        "datasette-auth-github": {
-            "client_id": "...",
-            "client_secret": "...",
-            "allow_users": ["simonw"]
-        }
-    }
-}
-```
-You can list one or more GitHub usernames here.
-
-## Restricting access to specific GitHub organizations or teams
-
-You can also restrict access to users who are members of a specific GitHub organization:
-
-```json
-{
-    "plugins": {
-        "datasette-auth-github": {
-            "client_id": "...",
-            "client_secret": "...",
-            "allow_orgs": ["datasette-project"]
-        }
-    }
-}
-```
-
-If your organization is [arranged into teams](https://help.github.com/en/articles/organizing-members-into-teams) you can restrict access to a specific team like this:
-
-```json
-{
-    "plugins": {
-        "datasette-auth-github": {
-            "client_id": "...",
-            "client_secret": "...",
-            "allow_teams": ["your-organization/engineering"]
-        }
-    }
-}
-```
-
-## Using this with the 'datasette publish' command
-
-`allow_orgs`, `allow_users` and `allow_teams` can both be single strings rather than lists. This means you can publish data and configure the plugin entirely from the command-line like so:
-
-    $ datasette publish nowv1 fixtures.db \
-        --alias datasette-auth-demo \
-        --install=datasette-auth-github \
-        --plugin-secret datasette-auth-github client_id 86e397f7fd7a54d26a3a \
-        --plugin-secret datasette-auth-github client_secret ... \
-        --plugin-secret datasette-auth-github allow_user simonw
 
 ## Cookie expiration
 
@@ -161,52 +164,6 @@ If you need to revoke access to your instance immediately, you can do so using t
 ```
 
 All existing cookies will be invalidated. Users who are still members of the organization or team will be able to sign in again - and in fact may be signed in automatically. Users who have been removed from the organization or team will lose access to the Datasette instance.
-
-## Using this as ASGI middleware without Datasette
-
-While `datasette-auth-github` is designed to be used as a [Datasette plugin](https://datasette.readthedocs.io/en/stable/plugins.html), it can also be used as regular ASGI middleware to add GitHub authentication to any ASGI application.
-
-Here's how to do that:
-
-```python
-from datasette_auth_github import GitHubAuth
-from your_asgi_app import asgi_app
-
-
-app = GitHubAuth(
-    asgi_app,
-    client_id="github_client_id",
-    client_secret="github_client_secret",
-    require_auth=True, # Defaults to False
-    # Other options:
-    # cookie_ttl=24 * 60 * 60,
-    # disable_auto_login=True,
-    # allow_users=["simonw"],
-    # allow_orgs=["my-org"],
-    # allow_teams=["my-org/engineering"],
-)
-```
-
-The keyword arguments work in the same way as the Datasette plugin settings documented above.
-
-There's one key difference: when used as a plugin, `require_auth` defaults to True. If you are wrapping your own application using the middleware the default behaviour is to allow anonymous access - you need to explicitly set the `require_auth=True` keyword argument to change this behaviour.
-
-Once wrapped in this way, your application will redirect users to GitHub to authenticate if they are not yet signed in. Authentication is recorded using a signed cookie.
-
-The middleware adds a new `"auth"` key to the scope containing details of the signed-in user, which is then passed to your application. The contents of the `scope["auth"]` key will look like this:
-
-```json
-{
-    "id": "1234 (their GitHub user ID)",
-    "name": "Their Display Name",
-    "username": "their-github-username",
-    "email": "their-github@email-address.com",
-    "ts": 1562602415
-}
-```
-The `"ts"` value is an integer `time.time()` timestamp representing when the user last signed in.
-
-If the user is not signed in (and you are not using required authentication) the `"auth"` scope key will be set to `None`.
 
 ### cacheable_prefixes
 
