@@ -48,6 +48,29 @@ By default anonymous users will still be able to interact with Datasette. If you
     }
 }
 ```
+## The authenticated actor
+
+Visit `/-/actor` when signed in to see the shape of the authenticated actor. It should look something like this:
+
+```json
+{
+    "actor": {
+        "gh_id": "9599",
+        "gh_name": "Simon Willison",
+        "gh_login": "simonw",
+        "gh_email": "...",
+        "gh_orgs": [
+            "dogsheep",
+            "datasette-project"
+        ],
+        "gh_teams": [
+            "dogsheep/test"
+        ]
+    }
+}
+```
+
+The `gh_orgs` and `gh_teams` properties will only be present if you used `load_teams` or `load_orgs`, documented below.
 
 ## Restricting access to specific users
 
@@ -56,7 +79,7 @@ You can use Datasette's [permissions mechanism](https://datasette.readthedocs.io
 ```json
 {
     "allow": {
-        "gh_user": "simonw"
+        "gh_login": "simonw"
     },
     "plugins": {
         "datasette-auth-github": {
@@ -85,7 +108,7 @@ Then you can use `"allow": {"gh_orgs": [...]}` to specify which organizations ar
         }
     },
     "allow": {
-        "gh_org": "your-organization"
+        "gh_orgs": "your-organization"
     }
 }
 ```
@@ -103,84 +126,8 @@ If your organization is [arranged into teams](https://help.github.com/en/article
             ]
         }
     },
-    "allow": {
+    "allows": {
         "gh_team": "your-organization/engineering"
     }
 }
 ```
-
-## Automatic log in
-
-Assuming you are requiring authentication (the default) Datasette will redirect users to GitHub to sign in. If the user has previously authenticated with GitHub they will be redirected back again automatically, providing an instant sign-on experience.
-
-If you would rather they saw a "You are logged out" screen with a button first, you can change this behaviour by adding the "disable_auto_login" setting to your configuration:
-
-```json
-{
-    "plugins": {
-        "datasette-auth-github": {
-            "client_id": "...",
-            "client_secret": "...",
-            "disable_auto_login": true
-        }
-    }
-}
-```
-
-## Cookie expiration
-
-The cookies set by this plugin default to expiring after an hour. Users with expired cookies will be automatically redirected back through GitHub to log in, so they are unlikely to notice that their cookies have expired.
-
-You can change the cookie expiration policy in seconds using the `cookie_ttl` setting. Here's how to increase that timeout to 24 hours:
-
-```json
-{
-    "plugins": {
-        "datasette-auth-github": {
-            "client_id": "...",
-            "client_secret": "...",
-            "cookie_ttl": 86400
-        }
-    }
-}
-```
-
-## Forced cookie expiration
-
-If you are using GitHub organizations or teams with this plugin, you need to be aware that users may continue to hold valid cookies even after they have been removed from a team or organization - generally for up to an hour unless you have changed the `cookie_ttl`.
-
-If you need to revoke access to your instance immediately, you can do so using the `cookie_version` setting. Simply modify your metadata to add a new value for `cookie_version` and restart or redeploy your Datasette instance:
-
-```json
-{
-    "plugins": {
-        "datasette-auth-github": {
-            "client_id": "...",
-            "client_secret": "...",
-            "cookie_version": 2
-        }
-    }
-}
-```
-
-All existing cookies will be invalidated. Users who are still members of the organization or team will be able to sign in again - and in fact may be signed in automatically. Users who have been removed from the organization or team will lose access to the Datasette instance.
-
-### cacheable_prefixes
-
-By default, the middleware marks all returned responses as `cache-control: private`. This is to ensure that content which was meant to be private to an individual user is not accidentally stored and re-transmitted by any intermediary proxying caches.
-
-This means even static JavaScript and CSS assets will not be cached by the user's browser, which can have a negative impact on performance.
-
-You can specify path prefixes that should NOT be marked as `cache-control: private` using the `cacheable_prefixes` constructor argument:
-
-```python
-app = GitHubAuth(
-    asgi_app,
-    client_id="github_client_id",
-    client_secret="github_client_secret",
-    require_auth=True,
-    cacheable_prefixes=["/static/"],
-)
-```
-
-Now any files within the `/static/` directory will not have the `cache-control: private` header added by the middleware.
