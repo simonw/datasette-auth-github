@@ -24,7 +24,7 @@ setup(
     packages=["datasette_auth_github"],
     entry_points={"datasette": ["auth_github = datasette_auth_github"]},
     extras_require={
-        "test": ["datasette", "pytest", "pytest-asyncio", "asgiref~=3.1.2"]
+        "test": ["datasette", "pytest", "pytest-asyncio", "httpx", "sqlite-utils"]
     },
     tests_require=["datasette-auth-github[test]"],
     package_data={"datasette_auth_github": ["templates/*.html"]},
