@@ -135,7 +135,7 @@ async def test_github_auth_callback(ds, monkeypatch):
     monkeypatch.setattr(views, "http_request", stub_http_request)
     async with httpx.AsyncClient(app=ds.app()) as client:
         response = await client.get(
-            "http://localhost/-/auth-callback?code=github-code-here",
+            "http://localhost/-/github-auth-callback?code=github-code-here",
             allow_redirects=False,
         )
         assert {
