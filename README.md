@@ -1,8 +1,9 @@
 # datasette-auth-github
 
 [![PyPI](https://img.shields.io/pypi/v/datasette-auth-github.svg)](https://pypi.org/project/datasette-auth-github/)
-[![CircleCI](https://circleci.com/gh/simonw/datasette-auth-github.svg?style=svg)](https://circleci.com/gh/simonw/datasette-auth-github)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette-auth-github/blob/master/LICENSE)
+[![Changelog](https://img.shields.io/github/v/release/simonw/datasette-auth-github?include_prereleases&label=changelog)](https://github.com/simonw/datasette-auth-github/releases)
+[![Tests](https://github.com/simonw/datasette-auth-github/workflows/Test/badge.svg)](https://github.com/simonw/datasette-auth-github/actions?query=workflow%3ATest)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette-auth-github/blob/main/LICENSE)
 
 Datasette plugin that authenticates users against GitHub.
 
