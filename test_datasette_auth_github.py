@@ -138,6 +138,7 @@ async def test_github_auth_callback(ds, monkeypatch):
         )
         assert {
             "a": {
+                "display": "demouser",
                 "gh_id": "123",
                 "gh_name": "GitHub User",
                 "gh_login": "demouser",
