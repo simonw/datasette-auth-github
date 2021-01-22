@@ -29,8 +29,10 @@ async def github_auth_start(datasette):
         scope = "user"
     else:
         scope = "user:email"
-    github_login_url = "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(
-        scope, config["client_id"]
+    github_login_url = (
+        "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(
+            scope, config["client_id"]
+        )
     )
     return Response.redirect(github_login_url)
 
@@ -72,7 +74,8 @@ async def github_auth_callback(datasette, request, scope, receive, send):
     try:
         profile = (
             await http_request(
-                profile_url, headers={"Authorization": "token {}".format(access_token)},
+                profile_url,
+                headers={"Authorization": "token {}".format(access_token)},
             )
         ).json()
     except ValueError:
@@ -108,15 +111,18 @@ async def github_auth_callback(datasette, request, scope, receive, send):
                 org_slug, team_slug
             )
             response = await http_request(
-                lookup_url, headers={"Authorization": "token {}".format(access_token)},
+                lookup_url,
+                headers={"Authorization": "token {}".format(access_token)},
             )
             if response.status_code == 200:
                 team_id = response.json()["id"]
             else:
                 continue
             # Now check if user is an active member of the team:
-            team_membership_url = "https://api.github.com/teams/{}/memberships/{}".format(
-                team_id, profile["login"]
+            team_membership_url = (
+                "https://api.github.com/teams/{}/memberships/{}".format(
+                    team_id, profile["login"]
+                )
             )
             response = await http_request(
                 team_membership_url,

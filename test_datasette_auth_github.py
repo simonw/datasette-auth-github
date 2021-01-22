@@ -100,7 +100,9 @@ async def ds(tmpdir):
                 }
             },
             "databases": {
-                "test": {"queries": {"sqlite_master": "select * from sqlite_master"},}
+                "test": {
+                    "queries": {"sqlite_master": "select * from sqlite_master"},
+                }
             },
         },
     )
