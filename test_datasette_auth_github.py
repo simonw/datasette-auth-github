@@ -150,3 +150,14 @@ async def test_github_auth_callback(ds, monkeypatch):
             }
         } == ds.unsign(response.cookies["ds_actor"], "actor")
         assert "/" == response.headers["location"]
+
+
+@pytest.mark.asyncio
+async def test_sign_in_with_github_button(ds):
+    response = await ds.client.get("/")
+    fragment = '<li><a href="/-/github-auth-start">Sign in with GitHub</a></li>'
+    assert fragment in response.text
+    response2 = await ds.client.get(
+        "/", cookies={"ds_actor": ds.sign({"a": {"display": "user"}}, "actor")}
+    )
+    assert fragment not in response2.text
