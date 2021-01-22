@@ -3,14 +3,6 @@ from urllib.parse import parse_qsl, urlencode
 from .utils import http_request, force_list
 
 
-CSS = """
-<style>
-body {
-    font-family: "Helvetica Neue", sans-serif;
-    font-size: 1rem;
-}</style>
-"""
-
 DEPRECATED_KEYS = ("allow_users", "allow_orgs", "allow_teams")
 
 
@@ -37,11 +29,20 @@ async def github_auth_start(datasette):
     return Response.redirect(github_login_url)
 
 
+async def response_error(datasette, error):
+    return Response.html(
+        await datasette.render_template(
+            "datasette_auth_github_error.html", {"error": error}
+        ),
+        status=500,
+    )
+
+
 async def github_auth_callback(datasette, request, scope, receive, send):
     config = datasette.plugin_config("datasette-auth-github")
     verify_config(config)
     if not request.args.get("code"):
-        return Response.html("Authentication failed, no code", status=500)
+        return await response_error(datasette, "Authentication failed, no code")
 
     # Exchange that code for a token
     github_response = (
@@ -59,15 +60,12 @@ async def github_auth_callback(datasette, request, scope, receive, send):
     parsed = dict(parse_qsl(github_response))
     # b'error=bad_verification_code&error_description=The+code+passed...'
     if parsed.get("error"):
-        return Response.html(
-            "{}<h1>GitHub authentication error</h1><p>{}</p><p>{}</p>".format(
-                CSS, parsed["error"], parsed.get("error_description") or ""
-            ),
-            status=500,
+        return await response_error(
+            datasette, parsed["error"] + ": " + (parsed.get("error_description") or "")
         )
     access_token = parsed.get("access_token")
     if not access_token:
-        return Response.html("No valid access token", status=500)
+        return await response_error(datasette, "No valid access token")
 
     # Use access_token to verify user
     profile_url = "https://api.github.com/user"
@@ -79,7 +77,7 @@ async def github_auth_callback(datasette, request, scope, receive, send):
             )
         ).json()
     except ValueError:
-        return Response.html("Could not load GitHub profile", status=500)
+        return await response_error(datasette, "Could not load GitHub profile")
     actor = {
         "display": profile["login"],
         "gh_id": str(profile["id"]),
