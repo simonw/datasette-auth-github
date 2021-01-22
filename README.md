@@ -55,6 +55,7 @@ Visit `/-/actor` when signed in to see the shape of the authenticated actor. It 
 ```json
 {
     "actor": {
+        "display": "simonw",
         "gh_id": "9599",
         "gh_name": "Simon Willison",
         "gh_login": "simonw",
