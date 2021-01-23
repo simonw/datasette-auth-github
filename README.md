@@ -10,6 +10,12 @@ Datasette plugin that authenticates users against GitHub.
 The new [0.13a1 alpha release](https://github.com/simonw/datasette-auth-github/releases/tag/0.13a0) requires [Datasette 0.51](https://datasette.readthedocs.io/en/latest/changelog.html#v0-51) or later.
 
 <!-- toc -->
+
+- [Setup instructions](#setup-instructions)
+- [The authenticated actor](#the-authenticated-actor)
+- [Restricting access to specific users](#restricting-access-to-specific-users)
+- [Restricting access to specific GitHub organizations or teams](#restricting-access-to-specific-github-organizations-or-teams)
+
 <!-- tocstop -->
 
 ## Setup instructions
