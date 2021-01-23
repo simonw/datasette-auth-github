@@ -9,6 +9,9 @@ Datasette plugin that authenticates users against GitHub.
 
 The new [0.13a1 alpha release](https://github.com/simonw/datasette-auth-github/releases/tag/0.13a0) requires [Datasette 0.51](https://datasette.readthedocs.io/en/latest/changelog.html#v0-51) or later.
 
+<!-- toc -->
+<!-- tocstop -->
+
 ## Setup instructions
 
 * Install the plugin - `pip install datasette-auth-github`
