@@ -20,7 +20,7 @@ The new [0.13a1 alpha release](https://github.com/simonw/datasette-auth-github/r
 
 ## Setup instructions
 
-* Install the plugin - `pip install datasette-auth-github`
+* Install the plugin: `datasette install datasette-auth-github`
 * Create a GitHub OAuth app: https://github.com/settings/applications/new
 * Set the Authorization callback URL to `http://127.0.0.1:8001/-/github-auth-callback`
 * Create a `metadata.json` file with the following structure:
