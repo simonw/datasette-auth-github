@@ -1,6 +1,7 @@
 from datasette.utils.asgi import Response
-from urllib.parse import parse_qsl, urlencode
-from .utils import http_request, force_list
+from urllib.parse import parse_qsl
+from .utils import load_orgs_and_teams
+import httpx
 
 
 DEPRECATED_KEYS = ("allow_users", "allow_orgs", "allow_teams")
@@ -45,19 +46,16 @@ async def github_auth_callback(datasette, request, scope, receive, send):
         return await response_error(datasette, "Authentication failed, no code")
 
     # Exchange that code for a token
-    github_response = (
-        await http_request(
+    async with httpx.AsyncClient() as client:
+        github_response = await client.post(
             "https://github.com/login/oauth/access_token",
-            body=urlencode(
-                {
-                    "client_id": config["client_id"],
-                    "client_secret": config["client_secret"],
-                    "code": request.args["code"],
-                }
-            ).encode("utf-8"),
+            data={
+                "client_id": config["client_id"],
+                "client_secret": config["client_secret"],
+                "code": request.args["code"],
+            },
         )
-    ).text
-    parsed = dict(parse_qsl(github_response))
+    parsed = dict(parse_qsl(github_response.text))
     # b'error=bad_verification_code&error_description=The+code+passed...'
     if parsed.get("error"):
         return await response_error(
@@ -70,12 +68,13 @@ async def github_auth_callback(datasette, request, scope, receive, send):
     # Use access_token to verify user
     profile_url = "https://api.github.com/user"
     try:
-        profile = (
-            await http_request(
-                profile_url,
-                headers={"Authorization": "token {}".format(access_token)},
-            )
-        ).json()
+        async with httpx.AsyncClient() as client:
+            profile = (
+                await client.get(
+                    profile_url,
+                    headers={"Authorization": "token {}".format(access_token)},
+                )
+            ).json()
     except ValueError:
         return await response_error(datasette, "Could not load GitHub profile")
     actor = {
@@ -85,50 +84,8 @@ async def github_auth_callback(datasette, request, scope, receive, send):
         "gh_login": profile["login"],
         "gh_email": profile["email"],
     }
-    # Optionally load orgs and/or teams
-    if config.get("load_orgs"):
-        load_orgs = config["load_orgs"]
-        gh_orgs = []
-        for org in force_list(load_orgs):
-            url = "https://api.github.com/orgs/{}/memberships/{}".format(
-                org, profile["login"]
-            )
-            response = await http_request(
-                url, headers={"Authorization": "token {}".format(access_token)}
-            )
-            if response.status_code == 200 and response.json()["state"] == "active":
-                gh_orgs.append(org)
-        actor["gh_orgs"] = gh_orgs
-    if config.get("load_teams"):
-        load_teams = config["load_teams"]
-        gh_teams = []
-        for team in force_list(load_teams):
-            org_slug, _, team_slug = team.partition("/")
-            # Figure out the team_id
-            lookup_url = "https://api.github.com/orgs/{}/teams/{}".format(
-                org_slug, team_slug
-            )
-            response = await http_request(
-                lookup_url,
-                headers={"Authorization": "token {}".format(access_token)},
-            )
-            if response.status_code == 200:
-                team_id = response.json()["id"]
-            else:
-                continue
-            # Now check if user is an active member of the team:
-            team_membership_url = (
-                "https://api.github.com/teams/{}/memberships/{}".format(
-                    team_id, profile["login"]
-                )
-            )
-            response = await http_request(
-                team_membership_url,
-                headers={"Authorization": "token {}".format(access_token)},
-            )
-            if response.status_code == 200 and response.json()["state"] == "active":
-                gh_teams.append(team)
-        actor["gh_teams"] = gh_teams
+    extras = await load_orgs_and_teams(config, profile, access_token)
+    actor.update(extras)
 
     # Set a signed cookie and redirect to homepage
     response = Response.redirect("/")

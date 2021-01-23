@@ -1,43 +1,63 @@
-import asyncio
-import json
-import urllib.request
+import httpx
+import time
 
 
-async def http_request(url, body=None, headers=None):
-    "Performs POST if body provided, GET otherwise."
-    headers = headers or {}
+async def load_orgs_and_teams(config, profile, access_token):
+    store_timestamp = False
+    extras = {}
+    if config.get("load_orgs"):
+        load_orgs = config["load_orgs"]
+        gh_orgs = []
+        for org in force_list(load_orgs):
+            url = "https://api.github.com/orgs/{}/memberships/{}".format(
+                org, profile["login"]
+            )
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    url, headers={"Authorization": "token {}".format(access_token)}
+                )
+            if response.status_code == 200 and response.json()["state"] == "active":
+                gh_orgs.append(org)
+        extras["gh_orgs"] = gh_orgs
+        store_timestamp = True
+    if config.get("load_teams"):
+        load_teams = config["load_teams"]
+        gh_teams = []
+        for team in force_list(load_teams):
+            org_slug, _, team_slug = team.partition("/")
+            # Figure out the team_id
+            lookup_url = "https://api.github.com/orgs/{}/teams/{}".format(
+                org_slug, team_slug
+            )
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    lookup_url,
+                    headers={"Authorization": "token {}".format(access_token)},
+                )
+            if response.status_code == 200:
+                team_id = response.json()["id"]
+            else:
+                continue
+            # Now check if user is an active member of the team:
+            team_membership_url = (
+                "https://api.github.com/teams/{}/memberships/{}".format(
+                    team_id, profile["login"]
+                )
+            )
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    team_membership_url,
+                    headers={"Authorization": "token {}".format(access_token)},
+                )
+            if response.status_code == 200 and response.json()["state"] == "active":
+                gh_teams.append(team)
+        extras["gh_teams"] = gh_teams
+        store_timestamp = True
 
-    def _request():
-        try:
-            message = urllib.request.urlopen(urllib.request.Request(url, body, headers))
-            response_body = message.read()
-            return message.status, tuple(message.headers.raw_items()), response_body
-        except urllib.error.HTTPError as http_error:
-            return http_error.status, tuple(), ""
+    # if store_timestamp:
+    #     extras["gh_ts"] = int(time.time())
 
-    loop = asyncio.get_event_loop()
-    status_code, headers, body = await loop.run_in_executor(None, _request)
-    return Response(status_code, headers, body)
-
-
-class Response:
-    "Wrapper class making HTTP responses easier to work with"
-
-    def __init__(self, status_code, headers, body):
-        self.status_code = status_code
-        self.headers = headers
-        self.body = body
-
-    def json(self):
-        return json.loads(self.text)
-
-    @property
-    def text(self):
-        # Should decode according to Content-Type, for the moment assumes utf8
-        if isinstance(self.body, bytes):
-            return self.body.decode("utf-8")
-        else:
-            return self.body
+    return extras
 
 
 def force_list(value):

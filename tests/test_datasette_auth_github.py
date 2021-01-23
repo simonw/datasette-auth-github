@@ -4,82 +4,89 @@ import httpx
 import json
 import pytest
 import sqlite_utils
+import re
 
 
-async def stub_http_request(url, body=None, headers=None):
-    headers = headers or {}
-    method = "GET" if body is None else "POST"
-    path = url.split("github.com")[1]
-    if path == "/login/oauth/access_token" and method == "POST":
-        return utils.Response(200, (), b"access_token=x_access_token")
-    elif path.startswith("/orgs/") and "/memberships/" in path:
-        # It's an organization membership check
-        org = path.split("/orgs/")[1].split("/")[0]
-        if org in ("demouser-org", "pending-org"):
-            member_state = {"demouser-org": "active", "pending-org": "pending"}[org]
-            return utils.Response(
-                200,
-                (),
-                json.dumps({"state": member_state, "role": "member"}).encode("utf8"),
-            )
-        else:
-            return utils.Response(
-                403, (), json.dumps({"message": "Not a member"}).encode("utf8")
-            )
-    elif path.startswith("/orgs/") and "/teams/" in path:
-        # /orgs/eventbrite/teams/engineering team ID lookup
-        team_slug = path.split("/")[-1].split("?")[0]
-        if team_slug in ("thetopteam", "pendingteam"):
-            team_info = {
-                "thetopteam": {
-                    "id": 54321,
-                    "name": "The Top Team",
-                    "slug": "thetopteam",
-                },
-                "pendingteam": {
-                    "id": 59999,
-                    "name": "Pending Team",
-                    "slug": "pendingteam",
-                },
-            }[team_slug]
-            return utils.Response(200, (), json.dumps(team_info).encode("utf-8"))
-        else:
-            return utils.Response(
-                404, (), json.dumps({"message": "Not found"}).encode("utf8")
-            )
-    elif path.startswith("/teams/") and "/memberships/" in path:
-        # Team membership check
-        if "54321" in path:
-            return utils.Response(
-                200,
-                (),
-                json.dumps({"state": "active", "role": "member"}).encode("utf8"),
-            )
-        elif "59999" in path:
-            # User is pending in this team
-            return utils.Response(
-                200,
-                (),
-                json.dumps({"state": "pending", "role": "member"}).encode("utf8"),
-            )
-        else:
-            return utils.Response(
-                404, (), json.dumps({"message": "Not found"}).encode("utf8")
-            )
-    elif path.startswith("/user") and method == "GET":
-        assert {"Authorization": "token x_access_token"} == headers
-        return utils.Response(
-            200,
-            (),
-            json.dumps(
-                {
-                    "id": 123,
-                    "name": "GitHub User",
-                    "login": "demouser",
-                    "email": "demouser@example.com",
-                }
-            ).encode("utf-8"),
+
+@pytest.fixture
+def non_mocked_hosts():
+    return ["localhost"]
+
+
+@pytest.fixture
+def assert_all_responses_were_requested():
+    return False
+
+
+@pytest.fixture
+def mocked_github_api(httpx_mock):
+    httpx_mock.add_response(
+        url="https://github.com/login/oauth/access_token",
+        method="POST",
+        data="access_token=x_access_token",
+    )
+    for org, state in (("demouser-org", "active"), ("pending-org", "pending")):
+        httpx_mock.add_response(
+            url=re.compile(
+                r"^https://api.github.com/orgs/{}/memberships/.*".format(org)
+            ),
+            json={"state": state, "role": "member"},
         )
+    # Catch-all for other orgs
+    httpx_mock.add_response(
+        url=re.compile(r"^https://api.github.com/orgs/.*/memberships/.*"),
+        status_code=403,
+        json={"message": "Not a member"},
+    )
+    # Team lookups by ID
+    for team in (
+        {
+            "id": 54321,
+            "name": "The Top Team",
+            "slug": "thetopteam",
+        },
+        {
+            "id": 59999,
+            "name": "Pending Team",
+            "slug": "pendingteam",
+        },
+    ):
+        httpx_mock.add_response(
+            url=re.compile(
+                r"^https://api.github.com/orgs/.*/teams/{}".format(team["slug"])
+            ),
+            json=team,
+        )
+    # Catch-all for other teams
+    httpx_mock.add_response(
+        url=re.compile(r"^https://api.github.com/orgs/.*/teams/.*"),
+        status_code=404,
+        json={"message": "Not found"},
+    )
+    # Team membership check
+    for id, state in (("54321", "active"), ("59999", "pending")):
+        httpx_mock.add_response(
+            url=re.compile(
+                r"^https://api.github.com/teams/{}/memberships/.*".format(id)
+            ),
+            json={"state": state, "role": "member"},
+        )
+    # Catch-all for other membership checks
+    httpx_mock.add_response(
+        url=re.compile(r"^https://api.github.com/teams/\d+/memberships/.*"),
+        status_code=404,
+        json={"message": "Not found"},
+    )
+    # User lookup
+    httpx_mock.add_response(
+        url=re.compile(r"^https://api.github.com/user.*"),
+        json={
+            "id": 123,
+            "name": "GitHub User",
+            "login": "demouser",
+            "email": "demouser@example.com",
+        },
+    )
 
 
 @pytest.fixture
@@ -131,8 +138,7 @@ async def test_github_auth_start(ds):
 
 
 @pytest.mark.asyncio
-async def test_github_auth_callback(ds, monkeypatch):
-    monkeypatch.setattr(views, "http_request", stub_http_request)
+async def test_github_auth_callback(ds, mocked_github_api):
     async with httpx.AsyncClient(app=ds.app()) as client:
         response = await client.get(
             "http://localhost/-/github-auth-callback?code=github-code-here",
