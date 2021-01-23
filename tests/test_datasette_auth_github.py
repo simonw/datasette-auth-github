@@ -7,7 +7,6 @@ import sqlite_utils
 import re
 
 
-
 @pytest.fixture
 def non_mocked_hosts():
     return ["localhost"]
@@ -144,17 +143,17 @@ async def test_github_auth_callback(ds, mocked_github_api):
             "http://localhost/-/github-auth-callback?code=github-code-here",
             allow_redirects=False,
         )
+        actor = ds.unsign(response.cookies["ds_actor"], "actor")["a"]
         assert {
-            "a": {
-                "display": "demouser",
-                "gh_id": "123",
-                "gh_name": "GitHub User",
-                "gh_login": "demouser",
-                "gh_email": "demouser@example.com",
-                "gh_orgs": ["demouser-org"],
-                "gh_teams": ["demouser-org/thetopteam"],
-            }
-        } == ds.unsign(response.cookies["ds_actor"], "actor")
+            "display": "demouser",
+            "gh_id": "123",
+            "gh_name": "GitHub User",
+            "gh_login": "demouser",
+            "gh_email": "demouser@example.com",
+            "gh_orgs": ["demouser-org"],
+            "gh_teams": ["demouser-org/thetopteam"],
+        }.items() <= actor.items()
+        assert isinstance(actor["gh_ts"], int)
         assert "/" == response.headers["location"]
 
 

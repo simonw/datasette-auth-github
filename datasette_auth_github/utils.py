@@ -54,8 +54,8 @@ async def load_orgs_and_teams(config, profile, access_token):
         extras["gh_teams"] = gh_teams
         store_timestamp = True
 
-    # if store_timestamp:
-    #     extras["gh_ts"] = int(time.time())
+    if store_timestamp:
+        extras["gh_ts"] = int(time.time())
 
     return extras
 
