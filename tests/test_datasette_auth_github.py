@@ -2,6 +2,7 @@ from datasette.app import Datasette
 import pytest
 import sqlite_utils
 import re
+import time
 
 
 @pytest.fixture
@@ -83,6 +84,7 @@ def mocked_github_api(httpx_mock):
             "email": "demouser@example.com",
         },
     )
+    return httpx_mock
 
 
 @pytest.fixture
@@ -188,3 +190,44 @@ async def test_sign_in_with_github_button(
         cookies = {"ds_actor": auth_response.cookies["ds_actor"]}
     databases = await ds.client.get("/.json", cookies=cookies)
     assert set(databases.json().keys()) == expected_databases
+
+
+@pytest.mark.asyncio
+async def test_membership_cache_ttl(ds, mocked_github_api):
+    # First get an actor cookie
+    ds_actor = (
+        await ds.client.get(
+            "/-/github-auth-callback?code=github-code-here",
+            allow_redirects=False,
+        )
+    ).cookies["ds_actor"]
+    assert get_and_clear_requests(mocked_github_api) == [
+        ("POST", "https://github.com/login/oauth/access_token"),
+        ("GET", "https://api.github.com/user"),
+        ("GET", "https://api.github.com/orgs/demouser-org/memberships/demouser"),
+        ("GET", "https://api.github.com/orgs/pending-org/memberships/demouser"),
+        ("GET", "https://api.github.com/orgs/demouser-org/teams/thetopteam"),
+        ("GET", "https://api.github.com/teams/54321/memberships/demouser"),
+        ("GET", "https://api.github.com/orgs/pending-org/teams/pendingteam"),
+        ("GET", "https://api.github.com/teams/59999/memberships/demouser"),
+    ]
+    # A hit with this cookie should not trigger API requests
+    response = await ds.client.get("/", cookies={"ds_actor": ds_actor})
+    assert response.status_code == 200
+    assert "ds_actor" not in response.cookies
+    assert get_and_clear_requests(mocked_github_api) == []
+
+    # Now reset the gh_ts to a long time in the past
+    actor = ds.unsign(ds_actor, "actor")["a"]
+    actor["gh_ts"] = int(time.time()) - 3600
+    ds_actor = ds.sign({"a": actor}, "actor")
+    # A hit with this cookie SHOULD make API calls, and set a new cookie
+    response2 = await ds.client.get("/", cookies={"ds_actor": ds_actor})
+    assert "ds_actor" in response2.cookies
+    assert get_and_clear_requests(mocked_github_api) != []
+
+
+def get_and_clear_requests(mocked):
+    requests = [(req.method, str(req.url)) for req in mocked.get_requests()]
+    mocked._requests = []
+    return requests

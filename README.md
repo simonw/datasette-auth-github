@@ -76,12 +76,13 @@ Visit `/-/actor` when signed in to see the shape of the authenticated actor. It 
         ],
         "gh_teams": [
             "dogsheep/test"
-        ]
+        ],
+        "gh_ts": 1611434081
     }
 }
 ```
 
-The `gh_orgs` and `gh_teams` properties will only be present if you used `load_teams` or `load_orgs`, documented below.
+The `gh_orgs`, `gh_teams` and `gh_ts` properties will only be present if you use the `load_teams` or `load_orgs` configuration settings, documented below.
 
 ## Restricting access to specific users
 
@@ -142,3 +143,24 @@ If your organization is [arranged into teams](https://help.github.com/en/article
     }
 }
 ```
+
+## Configuring a timeout for checking GitHub teams and organizations
+
+The first time a user signs in, their current relevant teams and organizations are written to their signed `ds_actor` cookie. This helps avoid making additional permission checking API calls to GitHub every time that user performs another action on the site.
+
+If a user is removed from a team or organization it is important for them to lose access to resources in Datasette as well. The plugin defaults to re-confirming their membership of teams and organizations every five minutes, so if a user is removed from a team or organization they should lose access to any associated Datasette resources within five minutes of the change being applied on GitHub.
+
+You can configure this timeout is seconds using the `membership_cache_ttl` setting in `metadata.json`, like this:
+
+```json
+{
+    "plugins": {
+        "datasette-auth-github": {
+            "...": "...",
+            "membership_cache_ttl": 60
+        }
+    }
+}
+```
+
+You should consider [GitHub's API rate limits](https://docs.github.com/en/developers/apps/rate-limits-for-github-apps) when changing this setting.
