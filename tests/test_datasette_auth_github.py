@@ -1,7 +1,4 @@
 from datasette.app import Datasette
-from datasette_auth_github import utils, views
-import httpx
-import json
 import pytest
 import sqlite_utils
 import re
@@ -126,35 +123,31 @@ async def test_ds_fixture(ds):
 
 @pytest.mark.asyncio
 async def test_github_auth_start(ds):
-    async with httpx.AsyncClient(app=ds.app()) as client:
-        response = await client.get(
-            "http://localhost/-/github-auth-start", allow_redirects=False
-        )
-        assert (
-            "https://github.com/login/oauth/authorize?scope=read:org&client_id=x_client_id"
-            == response.headers["location"]
-        )
+    response = await ds.client.get("/-/github-auth-start", allow_redirects=False)
+    assert (
+        "https://github.com/login/oauth/authorize?scope=read:org&client_id=x_client_id"
+        == response.headers["location"]
+    )
 
 
 @pytest.mark.asyncio
 async def test_github_auth_callback(ds, mocked_github_api):
-    async with httpx.AsyncClient(app=ds.app()) as client:
-        response = await client.get(
-            "http://localhost/-/github-auth-callback?code=github-code-here",
-            allow_redirects=False,
-        )
-        actor = ds.unsign(response.cookies["ds_actor"], "actor")["a"]
-        assert {
-            "display": "demouser",
-            "gh_id": "123",
-            "gh_name": "GitHub User",
-            "gh_login": "demouser",
-            "gh_email": "demouser@example.com",
-            "gh_orgs": ["demouser-org"],
-            "gh_teams": ["demouser-org/thetopteam"],
-        }.items() <= actor.items()
-        assert isinstance(actor["gh_ts"], int)
-        assert "/" == response.headers["location"]
+    response = await ds.client.get(
+        "/-/github-auth-callback?code=github-code-here",
+        allow_redirects=False,
+    )
+    actor = ds.unsign(response.cookies["ds_actor"], "actor")["a"]
+    assert {
+        "display": "demouser",
+        "gh_id": "123",
+        "gh_name": "GitHub User",
+        "gh_login": "demouser",
+        "gh_email": "demouser@example.com",
+        "gh_orgs": ["demouser-org"],
+        "gh_teams": ["demouser-org/thetopteam"],
+    }.items() <= actor.items()
+    assert isinstance(actor["gh_ts"], int)
+    assert "/" == response.headers["location"]
 
 
 @pytest.mark.asyncio
