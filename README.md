@@ -7,8 +7,6 @@
 
 Datasette plugin that authenticates users against GitHub.
 
-The new [0.13a1 alpha release](https://github.com/simonw/datasette-auth-github/releases/tag/0.13a0) requires [Datasette 0.51](https://datasette.readthedocs.io/en/latest/changelog.html#v0-51) or later.
-
 <!-- toc -->
 
 - [Setup instructions](#setup-instructions)
@@ -43,7 +41,7 @@ Now you can start Datasette like this, passing in the secrets as environment var
     $ GITHUB_CLIENT_ID=XXX GITHUB_CLIENT_SECRET=YYY datasette \
         fixtures.db -m metadata.json
 
-Note that hard-coding secrets in `metadata.json` is a bad idea as they will be visible to anyone who can navigate to `/-/metadata`. Instead, we use Datasette's mechanism for [adding secret plugin configuration options](https://datasette.readthedocs.io/en/latest/plugins.html#secret-configuration-values).
+Note that hard-coding secrets in `metadata.json` is a bad idea as they will be visible to anyone who can navigate to `/-/metadata`. Instead, we use Datasette's mechanism for [adding secret plugin configuration options](https://docs.datasette.io/en/stable/plugins.html#secret-configuration-values).
 
 By default anonymous users will still be able to interact with Datasette. If you wish all users to have to sign in with a GitHub account first, add this to your ``metadata.json``:
 
@@ -86,7 +84,7 @@ The `gh_orgs` and `gh_teams` properties will only be present if you used `load_t
 
 ## Restricting access to specific users
 
-You can use Datasette's [permissions mechanism](https://datasette.readthedocs.io/en/stable/authentication.html) to specify which user or users are allowed to access your instance. Here's how to restrict access to just GitHub user `simonw`:
+You can use Datasette's [permissions mechanism](https://docs.datasette.io/en/stable/authentication.html) to specify which user or users are allowed to access your instance. Here's how to restrict access to just GitHub user `simonw`:
 
 ```json
 {
@@ -101,7 +99,7 @@ You can use Datasette's [permissions mechanism](https://datasette.readthedocs.io
 }
 ```
 
-This `"allow"` block can be positioned at the database, table or query level instead: see [Configuring permissions in metadata.json](https://datasette.readthedocs.io/en/stable/authentication.html#configuring-permissions-in-metadata-json) for details.
+This `"allow"` block can be positioned at the database, table or query level instead: see [Configuring permissions in metadata.json](https://docs.datasette.io/en/stable/authentication.html#configuring-permissions-in-metadata-json) for details.
 
 Note that GitHub allows users to change their username, and it is possible for other people to claim old usernames. If you are concerned that your users may change their usernames you can key the allow blocks against GitHub user IDs instead, which do not change:
 
