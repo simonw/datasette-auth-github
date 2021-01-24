@@ -15,6 +15,7 @@ The new [0.13a1 alpha release](https://github.com/simonw/datasette-auth-github/r
 - [The authenticated actor](#the-authenticated-actor)
 - [Restricting access to specific users](#restricting-access-to-specific-users)
 - [Restricting access to specific GitHub organizations or teams](#restricting-access-to-specific-github-organizations-or-teams)
+- [What to do if a user is removed from an organization or team](#what-to-do-if-a-user-is-removed-from-an-organization-or-team)
 
 <!-- tocstop -->
 
