@@ -87,9 +87,10 @@ def mocked_github_api(httpx_mock):
 
 @pytest.fixture
 async def ds(tmpdir):
-    filepath = tmpdir / "test.db"
+    filepath = str(tmpdir / "test.db")
+    filepath2 = str(tmpdir / "demouser_org_only.db")
     ds = Datasette(
-        [filepath],
+        [filepath, filepath2],
         metadata={
             "plugins": {
                 "datasette-auth-github": {
@@ -105,14 +106,20 @@ async def ds(tmpdir):
             "databases": {
                 "test": {
                     "queries": {"sqlite_master": "select * from sqlite_master"},
-                }
+                },
+                "demouser_org_only": {"allow": {"gh_orgs": "demouser-org"}},
             },
         },
     )
-    await ds.get_database().execute_write_fn(
-        lambda conn: sqlite_utils.Database(conn)["example"].insert({"name": "example"}),
-        block=True,
-    )
+
+    def create_tables(conn):
+        sqlite_utils.Database(conn)["example"].insert({"name": "example"})
+
+    for database in ("test", "demouser_org_only"):
+        await ds.get_database(database).execute_write_fn(
+            create_tables,
+            block=True,
+        )
     return ds
 
 
@@ -159,3 +166,25 @@ async def test_sign_in_with_github_button(ds):
         "/", cookies={"ds_actor": ds.sign({"a": {"display": "user"}}, "actor")}
     )
     assert fragment not in response2.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "authenticated,expected_databases",
+    [
+        (False, {"test"}),
+        (True, {"test", "demouser_org_only"}),
+    ],
+)
+async def test_sign_in_with_github_button(
+    ds, mocked_github_api, authenticated, expected_databases
+):
+    cookies = {}
+    if authenticated:
+        auth_response = await ds.client.get(
+            "/-/github-auth-callback?code=github-code-here",
+            allow_redirects=False,
+        )
+        cookies = {"ds_actor": auth_response.cookies["ds_actor"]}
+    databases = await ds.client.get("/.json", cookies=cookies)
+    assert set(databases.json().keys()) == expected_databases
