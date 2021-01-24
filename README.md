@@ -102,6 +102,16 @@ You can use Datasette's [permissions mechanism](https://datasette.readthedocs.io
 
 This `"allow"` block can be positioned at the database, table or query level instead: see [Configuring permissions in metadata.json](https://datasette.readthedocs.io/en/stable/authentication.html#configuring-permissions-in-metadata-json) for details.
 
+Note that GitHub allows users to change their username, and it is possible for other people to claim old usernames. If you are concerned that your users may change their usernames you can key the allow blocks against GitHub user IDs instead, which do not change:
+
+```json
+{
+    "allow": {
+        "gh_id": "9599"
+    }
+}
+```
+
 ## Restricting access to specific GitHub organizations or teams
 
 You can also restrict access to users who are members of a specific GitHub organization.
@@ -142,3 +152,15 @@ If your organization is [arranged into teams](https://help.github.com/en/article
     }
 }
 ```
+
+## What to do if a user is removed from an organization or team
+
+A user's organization and team memberships are checked once, when they first sign in. Those teams and organizations are then persisted in the user's signed `ds_actor` cookie.
+
+This means that if a user is removed from an organization or team but still has a Datasette cookie, they will still be able to access that Datasette instance.
+
+You can remedy this by rotating the `DATASETTE_SECRET` environment variable any time you make changes to your GitHub organization members.
+
+Changing this value will cause all of your existing users to be signed out, by invalidating their cookies. When they sign back in again their new memberships will be recorded in a new cookie.
+
+See [Configuring the secret](https://docs.datasette.io/en/stable/settings.html?highlight=secret#configuring-the-secret) in the Datasette documentation for more details.
