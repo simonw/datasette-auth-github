@@ -16,10 +16,8 @@ def verify_config(config):
 async def github_auth_start(datasette):
     config = datasette.plugin_config("datasette-auth-github")
     verify_config(config)
-    if config.get("load_teams"):
+    if config.get("load_teams") or config.get("load_orgs"):
         scope = "read:org"
-    elif config.get("load_orgs"):
-        scope = "user"
     else:
         scope = "user:email"
     github_login_url = (
