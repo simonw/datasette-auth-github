@@ -36,6 +36,8 @@ Datasette plugin that authenticates users against GitHub.
 }
 ```
 
+For a GitHub Enterprise server, add `"host": "github.example.com"` to `datasette-auth-github`.
+
 Now you can start Datasette like this, passing in the secrets as environment variables:
 
     $ GITHUB_CLIENT_ID=XXX GITHUB_CLIENT_SECRET=YYY datasette \
