@@ -9,8 +9,8 @@ async def load_orgs_and_teams(config, profile, access_token):
         load_orgs = config["load_orgs"]
         gh_orgs = []
         for org in force_list(load_orgs):
-            url = "https://api.github.com/orgs/{}/memberships/{}".format(
-                org, profile["login"]
+            url = "https://api.{}/orgs/{}/memberships/{}".format(
+                config["host"], org, profile["login"]
             )
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -26,8 +26,8 @@ async def load_orgs_and_teams(config, profile, access_token):
         for team in force_list(load_teams):
             org_slug, _, team_slug = team.partition("/")
             # Figure out the team_id
-            lookup_url = "https://api.github.com/orgs/{}/teams/{}".format(
-                org_slug, team_slug
+            lookup_url = "https://api.{}/orgs/{}/teams/{}".format(
+                config["host"], org_slug, team_slug
             )
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -40,8 +40,8 @@ async def load_orgs_and_teams(config, profile, access_token):
                 continue
             # Now check if user is an active member of the team:
             team_membership_url = (
-                "https://api.github.com/teams/{}/memberships/{}".format(
-                    team_id, profile["login"]
+                "https://api.{}/teams/{}/memberships/{}".format(
+                    config["host"], team_id, profile["login"]
                 )
             )
             async with httpx.AsyncClient() as client:
