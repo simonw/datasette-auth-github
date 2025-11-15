@@ -11,7 +11,7 @@ def verify_config(config):
     config = config or {}
     for key in DEPRECATED_KEYS:
         assert key not in config, "{} is no longer a supported option".format(key)
-    config.setdefault('host', "github.com")
+    config.setdefault("host", "github.com")
 
 
 async def github_auth_start(datasette):
@@ -21,10 +21,8 @@ async def github_auth_start(datasette):
         scope = "read:org"
     else:
         scope = "user:email"
-    github_login_url = (
-        "https://{}/login/oauth/authorize?scope={}&client_id={}".format(
-            config["host"], scope, config["client_id"]
-        )
+    github_login_url = "https://{}/login/oauth/authorize?scope={}&client_id={}".format(
+        config["host"], scope, config["client_id"]
     )
     return Response.redirect(github_login_url)
 
@@ -87,7 +85,7 @@ async def github_auth_callback(datasette, request, scope, receive, send):
     extras = await load_orgs_and_teams(config, profile, access_token)
     actor.update(extras)
 
-   # Set a signed cookie and redirect to homepage (respecting 'base_url' setting)
+    # Set a signed cookie and redirect to homepage (respecting 'base_url' setting)
     response = Response.redirect(datasette.urls.path("/"))
     response.set_cookie("ds_actor", datasette.sign({"a": actor}, "actor"))
     return response

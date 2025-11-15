@@ -39,10 +39,8 @@ async def load_orgs_and_teams(config, profile, access_token):
             else:
                 continue
             # Now check if user is an active member of the team:
-            team_membership_url = (
-                "https://api.{}/teams/{}/memberships/{}".format(
-                    config["host"], team_id, profile["login"]
-                )
+            team_membership_url = "https://api.{}/teams/{}/memberships/{}".format(
+                config["host"], team_id, profile["login"]
             )
             async with httpx.AsyncClient() as client:
                 response = await client.get(
