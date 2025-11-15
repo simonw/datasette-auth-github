@@ -76,6 +76,7 @@ async def github_auth_callback(datasette, request, scope, receive, send):
     except ValueError:
         return await response_error(datasette, "Could not load GitHub profile")
     actor = {
+        "id": "github:{}".format(profile["id"]),
         "display": profile["login"],
         "gh_id": str(profile["id"]),
         "gh_name": profile["name"],
