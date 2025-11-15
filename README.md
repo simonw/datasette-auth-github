@@ -64,6 +64,7 @@ Visit `/-/actor` when signed in to see the shape of the authenticated actor. It 
 ```json
 {
     "actor": {
+        "id": "github:9599",
         "display": "simonw",
         "gh_id": "9599",
         "gh_name": "Simon Willison",
@@ -106,7 +107,7 @@ Note that GitHub allows users to change their username, and it is possible for o
 ```json
 {
     "allow": {
-        "gh_id": "9599"
+        "id": "github:9599"
     }
 }
 ```
