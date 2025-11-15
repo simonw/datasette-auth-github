@@ -154,6 +154,7 @@ async def test_github_auth_callback(ds, mocked_github_api):
     )
     actor = ds.unsign(response.cookies["ds_actor"], "actor")["a"]
     assert {
+        "id": "github:123",
         "display": "demouser",
         "gh_id": "123",
         "gh_name": "GitHub User",
