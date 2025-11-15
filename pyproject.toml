@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "datasette-auth-github"
+version = "0.13.1"
+description = "Datasette plugin and ASGI middleware that authenticates users against GitHub"
+readme = "README.md"
+authors = [{name = "Simon Willison"}]
+license = "Apache-2.0"
+requires-python = ">=3.10"
+dependencies = [
+    "datasette>=1.0a14",
+]
+
+[project.urls]
+Homepage = "https://github.com/simonw/datasette-auth-github"
+Changelog = "https://github.com/simonw/datasette-auth-github/releases"
+Issues = "https://github.com/simonw/datasette-auth-github/issues"
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-asyncio",
+    "sqlite-utils",
+    "pytest-httpx",
+]
+
+[project.entry-points.datasette]
+auth_github = "datasette_auth_github"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["datasette_auth_github*"]
+
+[tool.setuptools.package-data]
+datasette_auth_github = ["templates/*.html"]

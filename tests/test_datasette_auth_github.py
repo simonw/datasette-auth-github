@@ -1,5 +1,6 @@
 from datasette.app import Datasette
 import pytest
+import pytest_asyncio
 import sqlite_utils
 import re
 
@@ -19,7 +20,8 @@ def mocked_github_api(httpx_mock):
     httpx_mock.add_response(
         url="https://github.com/login/oauth/access_token",
         method="POST",
-        data="access_token=x_access_token",
+        content=b"access_token=x_access_token",
+        is_optional=True,
     )
     for org, state in (("demouser-org", "active"), ("pending-org", "pending")):
         httpx_mock.add_response(
@@ -27,12 +29,14 @@ def mocked_github_api(httpx_mock):
                 r"^https://api.github.com/orgs/{}/memberships/.*".format(org)
             ),
             json={"state": state, "role": "member"},
+            is_optional=True,
         )
     # Catch-all for other orgs
     httpx_mock.add_response(
         url=re.compile(r"^https://api.github.com/orgs/.*/memberships/.*"),
         status_code=403,
         json={"message": "Not a member"},
+        is_optional=True,
     )
     # Team lookups by ID
     for team in (
@@ -52,12 +56,14 @@ def mocked_github_api(httpx_mock):
                 r"^https://api.github.com/orgs/.*/teams/{}".format(team["slug"])
             ),
             json=team,
+            is_optional=True,
         )
     # Catch-all for other teams
     httpx_mock.add_response(
         url=re.compile(r"^https://api.github.com/orgs/.*/teams/.*"),
         status_code=404,
         json={"message": "Not found"},
+        is_optional=True,
     )
     # Team membership check
     for id, state in (("54321", "active"), ("59999", "pending")):
@@ -66,12 +72,14 @@ def mocked_github_api(httpx_mock):
                 r"^https://api.github.com/teams/{}/memberships/.*".format(id)
             ),
             json={"state": state, "role": "member"},
+            is_optional=True,
         )
     # Catch-all for other membership checks
     httpx_mock.add_response(
         url=re.compile(r"^https://api.github.com/teams/\d+/memberships/.*"),
         status_code=404,
         json={"message": "Not found"},
+        is_optional=True,
     )
     # User lookup
     httpx_mock.add_response(
@@ -82,10 +90,11 @@ def mocked_github_api(httpx_mock):
             "login": "demouser",
             "email": "demouser@example.com",
         },
+        is_optional=True,
     )
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def ds(tmpdir):
     filepath = str(tmpdir / "test.db")
     filepath2 = str(tmpdir / "demouser_org_only.db")
@@ -130,7 +139,7 @@ async def test_ds_fixture(ds):
 
 @pytest.mark.asyncio
 async def test_github_auth_start(ds):
-    response = await ds.client.get("/-/github-auth-start", allow_redirects=False)
+    response = await ds.client.get("/-/github-auth-start", follow_redirects=False)
     assert (
         "https://github.com/login/oauth/authorize?scope=read:org&client_id=x_client_id"
         == response.headers["location"]
@@ -141,10 +150,11 @@ async def test_github_auth_start(ds):
 async def test_github_auth_callback(ds, mocked_github_api):
     response = await ds.client.get(
         "/-/github-auth-callback?code=github-code-here",
-        allow_redirects=False,
+        follow_redirects=False,
     )
     actor = ds.unsign(response.cookies["ds_actor"], "actor")["a"]
     assert {
+        "id": "github:123",
         "display": "demouser",
         "gh_id": "123",
         "gh_name": "GitHub User",
@@ -176,15 +186,15 @@ async def test_sign_in_with_github_button(ds):
         (True, {"test", "demouser_org_only"}),
     ],
 )
-async def test_sign_in_with_github_button(
+async def test_database_access_permissions(
     ds, mocked_github_api, authenticated, expected_databases
 ):
     cookies = {}
     if authenticated:
         auth_response = await ds.client.get(
             "/-/github-auth-callback?code=github-code-here",
-            allow_redirects=False,
+            follow_redirects=False,
         )
         cookies = {"ds_actor": auth_response.cookies["ds_actor"]}
     databases = await ds.client.get("/.json", cookies=cookies)
-    assert set(databases.json().keys()) == expected_databases
+    assert set(databases.json()["databases"].keys()) == expected_databases
