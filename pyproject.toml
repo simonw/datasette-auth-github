@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datasette-auth-github"
-version = "0.13.1"
+version = "0.14.0"
 description = "Datasette plugin and ASGI middleware that authenticates users against GitHub"
 readme = "README.md"
 authors = [{name = "Simon Willison"}]

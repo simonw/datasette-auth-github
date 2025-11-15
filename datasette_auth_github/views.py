@@ -11,6 +11,7 @@ def verify_config(config):
     config = config or {}
     for key in DEPRECATED_KEYS:
         assert key not in config, "{} is no longer a supported option".format(key)
+    config.setdefault("host", "github.com")
 
 
 async def github_auth_start(datasette):
@@ -20,10 +21,8 @@ async def github_auth_start(datasette):
         scope = "read:org"
     else:
         scope = "user:email"
-    github_login_url = (
-        "https://github.com/login/oauth/authorize?scope={}&client_id={}".format(
-            scope, config["client_id"]
-        )
+    github_login_url = "https://{}/login/oauth/authorize?scope={}&client_id={}".format(
+        config["host"], scope, config["client_id"]
     )
     return Response.redirect(github_login_url)
 
@@ -46,7 +45,7 @@ async def github_auth_callback(datasette, request, scope, receive, send):
     # Exchange that code for a token
     async with httpx.AsyncClient() as client:
         github_response = await client.post(
-            "https://github.com/login/oauth/access_token",
+            "https://{}/login/oauth/access_token".format(config["host"]),
             data={
                 "client_id": config["client_id"],
                 "client_secret": config["client_secret"],
@@ -64,7 +63,7 @@ async def github_auth_callback(datasette, request, scope, receive, send):
         return await response_error(datasette, "No valid access token")
 
     # Use access_token to verify user
-    profile_url = "https://api.github.com/user"
+    profile_url = "https://api.{}/user".format(config["host"])
     try:
         async with httpx.AsyncClient() as client:
             profile = (
@@ -86,7 +85,7 @@ async def github_auth_callback(datasette, request, scope, receive, send):
     extras = await load_orgs_and_teams(config, profile, access_token)
     actor.update(extras)
 
-   # Set a signed cookie and redirect to homepage (respecting 'base_url' setting)
+    # Set a signed cookie and redirect to homepage (respecting 'base_url' setting)
     response = Response.redirect(datasette.urls.path("/"))
     response.set_cookie("ds_actor", datasette.sign({"a": actor}, "actor"))
     return response

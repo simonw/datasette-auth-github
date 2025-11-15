@@ -198,3 +198,76 @@ async def test_database_access_permissions(
         cookies = {"ds_actor": auth_response.cookies["ds_actor"]}
     databases = await ds.client.get("/.json", cookies=cookies)
     assert set(databases.json()["databases"].keys()) == expected_databases
+
+
+@pytest.mark.asyncio
+async def test_github_enterprise_host(tmpdir, httpx_mock):
+    """Test that GitHub Enterprise host configuration works correctly"""
+    # Mock GitHub Enterprise endpoints
+    enterprise_host = "github.example.com"
+
+    httpx_mock.add_response(
+        url=f"https://{enterprise_host}/login/oauth/access_token",
+        method="POST",
+        content=b"access_token=enterprise_access_token",
+    )
+
+    httpx_mock.add_response(
+        url=f"https://api.{enterprise_host}/user",
+        json={
+            "id": 456,
+            "name": "Enterprise User",
+            "login": "enterpriseuser",
+            "email": "enterprise@example.com",
+        },
+    )
+
+    httpx_mock.add_response(
+        url=re.compile(
+            rf"^https://api\.{re.escape(enterprise_host)}/orgs/enterprise-org/memberships/.*"
+        ),
+        json={"state": "active", "role": "member"},
+    )
+
+    # Create Datasette instance with GitHub Enterprise configuration
+    filepath = str(tmpdir / "test.db")
+    ds = Datasette(
+        [filepath],
+        metadata={
+            "plugins": {
+                "datasette-auth-github": {
+                    "client_id": "enterprise_client_id",
+                    "client_secret": "enterprise_client_secret",
+                    "host": enterprise_host,
+                    "load_orgs": ["enterprise-org"],
+                }
+            }
+        },
+    )
+
+    def create_tables(conn):
+        sqlite_utils.Database(conn)["example"].insert({"name": "example"})
+
+    await ds.get_database().execute_write_fn(create_tables, block=True)
+
+    # Test that the auth start URL uses the enterprise host
+    response = await ds.client.get("/-/github-auth-start", follow_redirects=False)
+    expected_url = f"https://{enterprise_host}/login/oauth/authorize?scope=read:org&client_id=enterprise_client_id"
+    assert expected_url == response.headers["location"]
+
+    # Test that the auth callback uses the enterprise host for API calls
+    response = await ds.client.get(
+        "/-/github-auth-callback?code=enterprise-code",
+        follow_redirects=False,
+    )
+
+    actor = ds.unsign(response.cookies["ds_actor"], "actor")["a"]
+    assert {
+        "id": "github:456",
+        "display": "enterpriseuser",
+        "gh_id": "456",
+        "gh_name": "Enterprise User",
+        "gh_login": "enterpriseuser",
+        "gh_email": "enterprise@example.com",
+        "gh_orgs": ["enterprise-org"],
+    }.items() <= actor.items()
