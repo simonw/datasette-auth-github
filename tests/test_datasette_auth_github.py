@@ -197,7 +197,11 @@ async def test_database_access_permissions(
         )
         cookies = {"ds_actor": auth_response.cookies["ds_actor"]}
     databases = await ds.client.get("/.json", cookies=cookies)
-    assert set(databases.json()["databases"].keys()) == expected_databases
+    # This differs between Datasette <1.0 and >=1.0a20
+    if "databases" in databases.json():
+        assert set(databases.json()["databases"].keys()) == expected_databases
+    else:
+        assert set(databases.json().keys()) == expected_databases
 
 
 @pytest.mark.asyncio
