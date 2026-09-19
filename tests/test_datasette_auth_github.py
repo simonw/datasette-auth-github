@@ -1,8 +1,20 @@
 from datasette.app import Datasette
+from datasette.utils import baseconv
+from datasette_auth_github.views import verify_config
+from http.cookies import SimpleCookie
+import inspect
 import pytest
 import pytest_asyncio
 import sqlite_utils
 import re
+
+
+def datasette_with_config(files=None, config=None, **kwargs):
+    # Datasette 1.0 moved plugin and permission configuration out of metadata.
+    config_key = (
+        "config" if "config" in inspect.signature(Datasette).parameters else "metadata"
+    )
+    return Datasette(files, **{config_key: config}, **kwargs)
 
 
 @pytest.fixture
@@ -98,9 +110,9 @@ def mocked_github_api(httpx_mock):
 async def ds(tmpdir):
     filepath = str(tmpdir / "test.db")
     filepath2 = str(tmpdir / "demouser_org_only.db")
-    ds = Datasette(
+    ds = datasette_with_config(
         [filepath, filepath2],
-        metadata={
+        config={
             "plugins": {
                 "datasette-auth-github": {
                     "client_id": "x_client_id",
@@ -168,6 +180,115 @@ async def test_github_auth_callback(ds, mocked_github_api):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "scheme,force_https_urls,expected_secure",
+    [("http", False, False), ("https", False, True), ("http", True, True)],
+    ids=["http", "https", "https-proxy"],
+)
+@pytest.mark.parametrize(
+    "cookie_config,expected_max_age",
+    [({}, 2592000), ({"login_max_age": 3600}, 3600), ({"login_max_age": None}, None)],
+    ids=["default", "custom", "session-only"],
+)
+async def test_callback_cookie_attributes(
+    mocked_github_api,
+    monkeypatch,
+    scheme,
+    force_https_urls,
+    expected_secure,
+    cookie_config,
+    expected_max_age,
+):
+    now = 1700000000
+    monkeypatch.setattr("time.time", lambda: now)
+    ds = datasette_with_config(
+        config={
+            "plugins": {
+                "datasette-auth-github": {
+                    "client_id": "x_client_id",
+                    "client_secret": "x_client_secret",
+                    **cookie_config,
+                }
+            }
+        },
+        settings={"force_https_urls": force_https_urls},
+    )
+    response = await ds.client.request(
+        "GET",
+        f"{scheme}://localhost/-/github-auth-callback?code=github-code-here",
+        follow_redirects=False,
+        avoid_path_rewrites=True,
+    )
+    assert response.status_code == 302
+    cookies = SimpleCookie()
+    for header in response.headers.get_list("set-cookie"):
+        cookies.load(header)
+    cookie = cookies["ds_actor"]
+    assert cookie["httponly"] is True
+    assert bool(cookie["secure"]) is expected_secure
+    assert cookie["samesite"].lower() == "lax"
+    assert cookie["path"] == "/"
+    assert cookie["domain"] == ""
+    payload = ds.unsign(cookie.value, "actor")
+    assert payload["a"]["id"] == "github:123"
+    if expected_max_age is None:
+        assert cookie["max-age"] == ""
+        assert cookie["expires"] == ""
+        assert "e" not in payload
+    else:
+        assert cookie["max-age"] == str(expected_max_age)
+        assert int(baseconv.base62.decode(payload["e"])) == now + expected_max_age
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "cookie_config,max_age",
+    [({}, 2592000), ({"login_max_age": 3600}, 3600), ({"login_max_age": None}, None)],
+    ids=["default", "custom", "session-only"],
+)
+async def test_callback_cookie_expiration(
+    mocked_github_api, monkeypatch, cookie_config, max_age
+):
+    now = 1700000000
+    monkeypatch.setattr("time.time", lambda: now)
+    ds = datasette_with_config(
+        config={
+            "plugins": {
+                "datasette-auth-github": {
+                    "client_id": "x_client_id",
+                    "client_secret": "x_client_secret",
+                    **cookie_config,
+                }
+            }
+        }
+    )
+    response = await ds.client.get(
+        "/-/github-auth-callback?code=github-code-here", follow_redirects=False
+    )
+    # Always send the cookie, even after its browser expiry, to exercise
+    # Datasette's verification of the signed expiration timestamp.
+    headers = {"Cookie": "ds_actor={}".format(response.cookies["ds_actor"])}
+    lifetime = max_age if max_age is not None else 2592000
+    now += lifetime - 1
+    response = await ds.client.get("/-/actor.json", headers=headers)
+    assert response.json()["actor"]["id"] == "github:123"
+    now += 2
+    response = await ds.client.get("/-/actor.json", headers=headers)
+    if max_age is None:
+        assert response.json()["actor"]["id"] == "github:123"
+    else:
+        assert response.json()["actor"] is None
+
+
+@pytest.mark.parametrize("value", [True, False, 0, -1, "3600", 1.5])
+def test_invalid_login_max_age(value):
+    with pytest.raises(
+        ValueError, match="^login_max_age must be a positive integer or null$"
+    ):
+        verify_config({"login_max_age": value})
+
+
+@pytest.mark.asyncio
 async def test_sign_in_with_github_button(ds):
     response = await ds.client.get("/")
     fragment = '<li><a href="/-/github-auth-start">Sign in with GitHub</a></li>'
@@ -197,11 +318,14 @@ async def test_database_access_permissions(
         )
         cookies = {"ds_actor": auth_response.cookies["ds_actor"]}
     databases = await ds.client.get("/.json", cookies=cookies)
-    # This differs between Datasette <1.0 and >=1.0a20
-    if "databases" in databases.json():
-        assert set(databases.json()["databases"].keys()) == expected_databases
-    else:
-        assert set(databases.json().keys()) == expected_databases
+    # Datasette versions expose databases as a top-level or nested dictionary,
+    # or as a list of objects with a name field.
+    data = databases.json()
+    data = data.get("databases", data)
+    names = (
+        {database["name"] for database in data} if isinstance(data, list) else set(data)
+    )
+    assert names == expected_databases
 
 
 @pytest.mark.asyncio
@@ -235,9 +359,9 @@ async def test_github_enterprise_host(tmpdir, httpx_mock):
 
     # Create Datasette instance with GitHub Enterprise configuration
     filepath = str(tmpdir / "test.db")
-    ds = Datasette(
+    ds = datasette_with_config(
         [filepath],
-        metadata={
+        config={
             "plugins": {
                 "datasette-auth-github": {
                     "client_id": "enterprise_client_id",

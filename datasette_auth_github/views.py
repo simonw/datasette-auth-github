@@ -1,10 +1,12 @@
 from datasette.utils.asgi import Response
+from datasette.utils import baseconv
 from urllib.parse import parse_qsl
 from .utils import load_orgs_and_teams
 import httpx
-
+import time
 
 DEPRECATED_KEYS = ("allow_users", "allow_orgs", "allow_teams")
+DEFAULT_LOGIN_MAX_AGE = 30 * 24 * 60 * 60
 
 
 def verify_config(config):
@@ -12,6 +14,11 @@ def verify_config(config):
     for key in DEPRECATED_KEYS:
         assert key not in config, "{} is no longer a supported option".format(key)
     config.setdefault("host", "github.com")
+    login_max_age = config.get("login_max_age", DEFAULT_LOGIN_MAX_AGE)
+    if login_max_age is not None and (
+        type(login_max_age) is not int or login_max_age <= 0
+    ):
+        raise ValueError("login_max_age must be a positive integer or null")
 
 
 async def github_auth_start(datasette):
@@ -87,5 +94,18 @@ async def github_auth_callback(datasette, request, scope, receive, send):
 
     # Set a signed cookie and redirect to homepage (respecting 'base_url' setting)
     response = Response.redirect(datasette.urls.path("/"))
-    response.set_cookie("ds_actor", datasette.sign({"a": actor}, "actor"))
+    login_max_age = config.get("login_max_age", DEFAULT_LOGIN_MAX_AGE)
+    data = {"a": actor}
+    if login_max_age is not None:
+        # Enforce expiration server-side as well as in the browser.
+        data["e"] = baseconv.base62.encode(int(time.time()) + login_max_age)
+    response.set_cookie(
+        "ds_actor",
+        datasette.sign(data, "actor"),
+        max_age=login_max_age,
+        httponly=True,
+        secure=request.scheme == "https",
+        samesite="lax",
+        path="/",
+    )
     return response
