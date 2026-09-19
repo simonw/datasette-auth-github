@@ -19,8 +19,8 @@ Homepage = "https://github.com/simonw/datasette-auth-github"
 Changelog = "https://github.com/simonw/datasette-auth-github/releases"
 Issues = "https://github.com/simonw/datasette-auth-github/issues"
 
-[project.optional-dependencies]
-test = [
+[dependency-groups]
+dev = [
     "pytest",
     "pytest-asyncio",
     "sqlite-utils",
